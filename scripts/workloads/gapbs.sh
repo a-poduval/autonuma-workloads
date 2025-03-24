@@ -8,7 +8,7 @@ config_gapbs(){
 }
 
 build_gapbs(){
-    (cd $CUR_PATH/gapbs && make && make bench-run)
+    (cd $CUR_PATH/gapbs && make -j$(nproc) && make bench-run -j$(nproc))
 }
 
 run_gapbs(){
@@ -21,4 +21,8 @@ run_gapbs(){
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
             $CUR_PATH/gapbs/$1 -n $num_rep -i $num_iter -f $graph_path
     fi
+}
+
+clean_gapbs(){
+    return
 }

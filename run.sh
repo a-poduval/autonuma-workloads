@@ -105,6 +105,11 @@ main() {
         echo "ERROR: Function config_${SUITE} not defined in ${SUITE_SCRIPT}"
         exit 1
     fi
+
+    if ! declare -f "clean_${SUITE}" > /dev/null; then
+        echo "ERROR: Function clean_${SUITE} not defined in ${SUITE_SCRIPT}"
+        exit 1
+    fi
     
     #Set config
     config_${SUITE} ${CONFIG_FILE} ${WORKLOAD}
@@ -116,6 +121,8 @@ main() {
     start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
     run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
     stop_pebs
+
+    clean_${SUITE}
 }
 
 main $@
