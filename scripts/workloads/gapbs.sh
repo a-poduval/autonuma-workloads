@@ -14,13 +14,18 @@ build_gapbs(){
 run_gapbs(){
     local workload=$1
 
-    if [[ $workload == "sssp" ]]; then
+    if [ $workload == "cc" ] || [ $workload == "cc_sv" ] || [ $workload == "bfs" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path
+            $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+    elif [ $workload == "sssp" ] || [ $workload == "tc" ]; then
+        OMP_NUM_THREADS=$num_threads taskset 0xFF \
+            $CUR_PATH/gapbs/$1 -n $num_rep -g 25 &
     else
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/gapbs/$1 -n $num_rep -i $num_iter -f $graph_path
+            $CUR_PATH/gapbs/$1 -n $num_rep -i $num_iter -f $graph_path &
     fi
+
+    workload_pid=$!
 }
 
 clean_gapbs(){

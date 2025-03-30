@@ -11,3 +11,7 @@ build_merci(){
 run_merci(){
 
 }
+
+clean_merci(){
+
+}

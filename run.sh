@@ -1,14 +1,38 @@
 #!/bin/bash
 
+#Change if needed
+DAMO_PATH='/mydata/damo'
+export PATH=$DAMO_PATH:$PATH
+
 # Function to display usage instructions
 usage() {
     echo "Usage: $0 workload [-f config_file.yaml]"
-    echo "  workload           Name of the workload to run (e.g., gapbs-pr)"
-    echo "  -b                     Benchmark suite"
-    echo "  -w                     Workload"
-    echo "  -o                     Output directory"
-    echo "  -f config_file.yaml    (Optional) YAML configuration file for workload parameters"
+    echo "  workload                    Name of the workload to run (e.g., pr)"
+    echo "  -b                          Benchmark suite"
+    echo "  -w                          Workload"
+    echo "  -o                          Output directory"
+    echo "  -f config_file.yaml         (Optional) YAML configuration file for workload parameters"
+    echo "  -i instrumentation          Instrumentation tool: 'pebs', 'damon' (default: none)"
+    echo "  -s Damon Sampling Rate      Microseconds (default: 5000)"
     exit 1
+}
+
+start_damo() {
+    local output_file="$1"
+    local proc_pid="$2"
+    local sampling_period="$3"
+
+    sudo env "PATH=$PATH" damo record -s ${sampling_period} -o $output_file $proc_pid &
+}
+
+stop_damo() {
+    local output_file="$1"
+    local text_output_file="${output_file%.dat}.damon.txt"
+    #sudo env "PATH=$PATH" damo stop #Looks Like damo ends on its own
+
+    #Without sleep, heatmap command sometimes fails.
+    sleep 1
+    sudo env "PATH=$PATH" damo report heatmap --output raw --input $output_file > $text_output_file 
 }
 
 start_pebs() {
@@ -46,16 +70,29 @@ main() {
     PEBS_PATH=$CUR_PATH/scripts/PEBS_page_tracking
     PEBS_PIPE="/tmp/pebs_pipe"
     WORKLOAD_SCRIPT_PATH=$CUR_PATH/scripts/workloads
+    SAMPLING_RATE=5000
 
     # Process additional command-line options using getopts
-    while getopts "f:b:w:o:" opt; do
+    while getopts "f:b:w:o:i:s:" opt; do
         case ${opt} in
             f)
                 CONFIG_FILE="$OPTARG"
                 ;;
-            b) SUITE="$OPTARG" ;;
-            w) WORKLOAD="$OPTARG" ;;
-            o) OUTPUT_DIR="$OPTARG" ;;
+            b)
+                SUITE="$OPTARG"
+                ;;
+            w)
+                WORKLOAD="$OPTARG"
+                ;;
+            o)
+                OUTPUT_DIR="$OPTARG"
+                ;;
+            i)
+                INSTRUMENT="$OPTARG"
+                ;;
+            s)
+                SAMPLING_RATE="$OPTARG"
+                ;;
             *)
                 usage
                 ;;
@@ -111,16 +148,53 @@ main() {
         exit 1
     fi
     
-    #Set config
+    # Set config
     config_${SUITE} ${CONFIG_FILE} ${WORKLOAD}
     
-    #Build workload
+    # Build workload
     build_${SUITE} ${WORKLOAD}
     
     # Call the workload function, passing the config file (if any).
-    start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
-    run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-    stop_pebs
+    case "$INSTRUMENT" in
+        # PEBS starts before workload, damo starts after.
+        pebs)
+            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+
+            echo "Running with PEBS."
+            start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
+            # Run command should set $workload_pid variable.
+            run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            tail --pid=$workload_pid -f /dev/null
+            stop_pebs
+
+            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            ;;
+
+        damon)
+            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+
+            echo "Running with DAMON."
+            # Run command should set $workload_pid variable.
+            run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            start_damo ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_damon.dat $workload_pid $SAMPLING_RATE
+            tail --pid=$workload_pid -f /dev/null
+            stop_damo ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_damon.dat
+
+            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            ;;
+        "")
+            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+
+            run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            tail --pid=$workload_pid -f /dev/null
+
+            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            ;;
+        *)
+            echo "ERROR: Unknown instrumentation option '$INSTRUMENT'. Valid options are 'pebs' or 'damon'."
+            exit 1
+            ;;
+        esac
 
     clean_${SUITE}
 }
