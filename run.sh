@@ -4,6 +4,8 @@
 DAMO_PATH='/mydata/damo'
 export PATH=$DAMO_PATH:$PATH
 
+set -x
+
 # Function to display usage instructions
 usage() {
     echo "Usage: $0 workload [-f config_file.yaml]"
@@ -13,7 +15,8 @@ usage() {
     echo "  -o                          Output directory"
     echo "  -f config_file.yaml         (Optional) YAML configuration file for workload parameters"
     echo "  -i instrumentation          Instrumentation tool: 'pebs', 'damon' (default: none)"
-    echo "  -s Damon Sampling Rate      Microseconds (default: 5000)"
+    echo "  -s Damon Sampling Rate      Default: 5000 (microseconds) or 5ms"
+    echo "  -a Damon Aggregate Rate     Default: 100ms"
     exit 1
 }
 
@@ -21,18 +24,22 @@ start_damo() {
     local output_file="$1"
     local proc_pid="$2"
     local sampling_period="$3"
+    local agg_period="$4"
 
-    sudo env "PATH=$PATH" damo record -s ${sampling_period} -o $output_file $proc_pid &
+    sudo env "PATH=$PATH" damo record -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
 }
 
 stop_damo() {
     local output_file="$1"
     local text_output_file="${output_file%.dat}.damon.txt"
-    #sudo env "PATH=$PATH" damo stop #Looks Like damo ends on its own
+    local text_region_output_file="${output_file%.dat}.region.damon.txt"
+    sudo env "PATH=$PATH" damo stop #Looks Like damo ends on its own
 
     #Without sleep, heatmap command sometimes fails.
-    sleep 1
+    sleep 10 
     sudo env "PATH=$PATH" damo report heatmap --output raw --input $output_file > $text_output_file 
+    sleep 10 
+    sudo env "PATH=$PATH" damo report access --raw_form --raw_number --input $output_file > $text_region_output_file
 }
 
 start_pebs() {
@@ -71,9 +78,10 @@ main() {
     PEBS_PIPE="/tmp/pebs_pipe"
     WORKLOAD_SCRIPT_PATH=$CUR_PATH/scripts/workloads
     SAMPLING_RATE=5000
+    AGG_RATE="100ms"
 
     # Process additional command-line options using getopts
-    while getopts "f:b:w:o:i:s:" opt; do
+    while getopts "f:b:w:o:i:s:a:" opt; do
         case ${opt} in
             f)
                 CONFIG_FILE="$OPTARG"
@@ -92,6 +100,9 @@ main() {
                 ;;
             s)
                 SAMPLING_RATE="$OPTARG"
+                ;;
+            a)
+                AGG_RATE="$OPTARG"
                 ;;
             *)
                 usage
@@ -174,11 +185,13 @@ main() {
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             echo "Running with DAMON."
+
+            DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            start_damo ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_damon.dat $workload_pid $SAMPLING_RATE
+            start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
             tail --pid=$workload_pid -f /dev/null
-            stop_damo ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_damon.dat
+            stop_damo ${DAMO_FILE} 
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
             ;;
