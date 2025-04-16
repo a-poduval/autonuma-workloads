@@ -28,7 +28,7 @@ temp_file=$(mktemp)
 filtered_file=$(mktemp)
 
 # Initialize the output file with headers
-echo "epoch,rno,start,end,size" > "$output_file"
+echo "epoch,rno,start,end,size,rss(kb),pathname" > "$output_file"
 
 # Function to calculate size in decimal from hex addresses
 calculate_size() {
@@ -40,9 +40,9 @@ calculate_size() {
 }
 
 # Step 1: Process the input file to calculate sizes and save to a temporary file
-tail -n +2 "$input_file" | while IFS=',' read -r epoch rno start end inode pathname; do
+tail -n +2 "$input_file" | while IFS=',' read -r epoch rno start end inode pathname rss_kb; do
     size=$(calculate_size "$start" "$end")
-    echo "$epoch,$rno,$start,$end,$size" >> "$temp_file"
+    echo "$epoch,$rno,$start,$end,$size,$rss_kb,$pathname" >> "$temp_file"
 done
 
 # Step 2: Epoch-based filtering (if enabled)

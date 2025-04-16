@@ -2,17 +2,20 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import seaborn as sns
 
 # Step 1: Parse command-line arguments
 parser = argparse.ArgumentParser(description="Generate heat map for address range accesses.")
 parser.add_argument("-d", "--datafile", required=True, help="Path to the data file with address accesses.")
 parser.add_argument("-r", "--rangefile", required=True, help="Path to the range file with address ranges.")
+parser.add_argument("-t", "--titlename", required=True, help="Workload name in title.")
 args = parser.parse_args()
 
 # Step 2: Read the files
 data_file = args.datafile
 ranges_file = args.rangefile
+titlename = args.titlename
 
 # Parse the address access file
 address_accesses = []
@@ -48,9 +51,9 @@ address_ranges = [f"{hex(row['start'])}-{hex(row['end'])}" for _, row in ranges.
 
 # Step 4: Plot the heat map
 plt.figure(figsize=(10, 8))
-sns.heatmap(heatmap_data, xticklabels=time_periods, yticklabels=address_ranges, cmap="YlGnBu")
+sns.heatmap(heatmap_data, xticklabels=time_periods, yticklabels=address_ranges, norm=LogNorm())
 plt.xlabel("Epoch/Time Period")
 plt.ylabel("Address Range")
-plt.title("Heat Map of Address Range Accesses")
+plt.title("Heat Map of Address Range Accesses for " + titlename)
 plt.axhline(y=0.5, color='black', linestyle='--')  # Example dashed lines
 plt.show()

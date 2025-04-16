@@ -1,79 +1,76 @@
 #!/bin/bash
 
-# Default parameters
-WORKLOAD_PATH="$1"
-shift
-ARGS="$@"
-INTERVAL=5 # Default interval in seconds
-CSV_FILE="memory_regions.csv"
+interval=5
+output_file="memory_regions.csv"
 
-# Ensure workload path is provided
-if [ -z "$WORKLOAD_PATH" ]; then
-  echo "Usage: $0 <workload_path> <args...>"
-  exit 1
-fi
-
-# Start the workload in the background
-$WORKLOAD_PATH $ARGS &
-WORKLOAD_PID=$!
-
-# Wait a bit for the workload to start
-sleep 1
-
-# Initialize epoch counter and CSV file
-epoch=0
-echo "epoch,rno,start,end,inode,pathname" > $CSV_FILE
-
-# Function to check and record memory regions from /proc/PID/maps
+    #smaps_file ~ /^[0-9a-f]/ {
 record_memory_regions() {
-  local pid=$1
-  local epoch=$2
-  local csv_file=$3
+    local pid=$1
+    local epoch=$2
 
-  # Get memory regions from /proc/PID/maps
-  if [ -e "/proc/$pid/maps" ]; then
-    # Read the memory regions and parse the start, end addresses, and pathname
-    awk -v epoch=$epoch '
-      BEGIN { rno=0 }
-      {
-        # Parse the start and end addresses
-        split($1, addr, "-");
-        start = addr[1];
-        end = addr[2];
-
-        # Get the inode (second last field)
-        inode = $5;
-        if (inode == "") {
-          inode = "N/A";  # Handle case with no pathname
+    awk -v epoch="$epoch" -v pid="$pid" '
+    BEGIN {
+        rno = 0;
+        smaps_file = "/proc/" pid "/smaps";
+    }
+    $1 ~ /^[0-9a-f]/ {
+        if (start) {
+            if (perm !~ /---p/ && rss_kb != 0) {
+                printf("%s,%d,%s,%s,%s,%s,%d\n", epoch, rno++, start, end, inode, pathname, rss_kb)
+            }
         }
 
-        # Get the pathname (last field)
-        pathname = $6;
-        if (pathname == "") {
-          pathname = "N/A";  # Handle case with no pathname
-        }
+        split($1, addrs, "-")
+        start = addrs[1]
+        end = addrs[2]
+        perm = $2
+        inode = $5
+        rss_kb = 0
 
-        # Print epoch, region number, start and end addresses, and pathname
-        print epoch "," rno "," start "," end "," inode "," pathname;
-        rno++;
-      }
-    ' /proc/$pid/maps >> "$csv_file"
-  fi
+        pathname = ""
+        for (i = 6; i <= NF; i++) {
+            pathname = pathname (i == 6 ? "" : " ") $i
+        }
+    }
+    /^Rss:/ {
+        rss_kb = $2
+    }
+    END {
+        if (start && perm !~ /---p/ && rss_kb != 0) {
+            printf("%s,%d,%s,%s,%s,%s,%d\n", epoch, rno++, start, end, inode, pathname, rss_kb)
+        }
+    }
+    ' "/proc/$pid/smaps"
 }
 
-# Monitor the workload's memory regions at periodic intervals
-while kill -0 $WORKLOAD_PID 2>/dev/null; do
-  # Record memory regions at the current epoch
-  record_memory_regions $WORKLOAD_PID $epoch $CSV_FILE
+main() {
+    if [ $# -lt 1 ]; then
+        echo "Usage: $0 <program> [args...]"
+        exit 1
+    fi
 
-  # Increment epoch
-  epoch=$((epoch + 1))
+    echo "epoch,rno,start,end,inode,pathname,rss_kb" > "$output_file"
 
-  # Sleep for the defined interval
-  sleep $INTERVAL
-done
+    # Start target program in background
+    "$@" &
+    target_pid=$!
 
-# Final record (in case the workload exits)
-record_memory_regions $WORKLOAD_PID $epoch $CSV_FILE
+    #echo "Monitoring PID $target_pid"
 
-echo "Memory region data recorded to $CSV_FILE"
+    # Wait a moment to make sure the process starts
+    sleep 0.1
+
+    epoch=0
+    while kill -0 "$target_pid" 2>/dev/null; do
+        #epoch=$(date +%s)
+        if [ -r "/proc/$target_pid/smaps" ]; then
+            record_memory_regions "$target_pid" "$epoch" >> "$output_file"
+        fi
+	((epoch+=1))
+        sleep "$interval"
+    done
+
+    #echo "Process $target_pid exited."
+}
+
+main "$@"

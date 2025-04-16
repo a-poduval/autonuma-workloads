@@ -208,6 +208,7 @@ main() {
             exit 1
             ;;
         esac
+    $CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
 
     clean_${SUITE}
 }
