@@ -169,6 +169,8 @@ main() {
     case "$INSTRUMENT" in
         # PEBS starts before workload, damo starts after.
         pebs)
+            # Disable SMT before running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             echo "Running with PEBS."
@@ -179,6 +181,8 @@ main() {
             stop_pebs
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            # Re-enable SMT after running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             ;;
 
         damon)
@@ -209,6 +213,7 @@ main() {
             ;;
         esac
     $CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
+    cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
 
     clean_${SUITE}
 }
