@@ -8,26 +8,26 @@ sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev
 
 # PEBS
 cd scripts/PEBS_page_tracking/
-git apply ../../pebs.patch
+git apply ../../patches/pebs.patch
 make -j20
 cd ../..
 
 # flexkvs
 cd flexkvs
-git apply ../flexkvs.patch
+git apply ../patches/flexkvs.patch
 make -j20
 cd ..
 
 # GAPBS
 cd gapbs
-git apply ../gapbs.patch
+git apply ../patches/gapbs.patch
 make bench-graphs -j20
 make -j20
 cd ..
 
 # graph_500
 cd graph_500
-git apply ../graph_500.patch
+git apply ../patches/graph_500.patch
 cd src
 make -j20
 cd ../..
@@ -42,7 +42,7 @@ cd ..
 
 # MERCI
 cd ../MERCI
-git apply ../merci.patch
+git apply ../patches/merci.patch
 mkdir -p data/4_filtered/amazon_All
 cd data/4_filtered/amazon_All
 wget https://pages.cs.wisc.edu/~apoduval/MERCI/data/4_filtered/amazon_All/amazon_All_test_filtered.txt
@@ -60,7 +60,7 @@ cd ../..
 
 # silo
 cd silo/silo
-git apply ../../silo.patch
+git apply ../../patches/silo.patch
 make dbtest -j20
 cd ../..
 
