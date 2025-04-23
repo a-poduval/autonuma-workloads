@@ -4,7 +4,7 @@ git submodule init
 git submodule update
 
 sudo apt update
-sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev
+sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev mpich
 
 # PEBS
 cd scripts/PEBS_page_tracking/
@@ -27,7 +27,7 @@ cd ..
 
 # graph_500
 cd graph_500
-git apply ../patches/graph_500.patch
+git apply ../patches/graph500.patch
 cd src
 make -j20
 cd ../..
@@ -41,7 +41,7 @@ make -j20
 cd ..
 
 # MERCI
-cd ../MERCI
+cd MERCI
 git apply ../patches/merci.patch
 mkdir -p data/4_filtered/amazon_All
 cd data/4_filtered/amazon_All
