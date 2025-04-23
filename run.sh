@@ -138,9 +138,14 @@ main() {
     # Source the workload script.
     source "${SUITE_SCRIPT}"
 
-    # Expect the workload script to define run, build, and config functions 
+    # Expect the workload script to define run, run_strace, build, and config functions
     if ! declare -f "run_${SUITE}" > /dev/null; then
         echo "ERROR: Function run_${SUITE} not defined in ${SUITE_SCRIPT}"
+        exit 1
+    fi
+
+    if ! declare -f "run_strace_${SUITE}" > /dev/null; then
+        echo "ERROR: Function run_strace_${SUITE} not defined in ${SUITE_SCRIPT}"
         exit 1
     fi
 
@@ -177,6 +182,7 @@ main() {
             start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
             stop_pebs
 
@@ -193,6 +199,7 @@ main() {
             DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
             tail --pid=$workload_pid -f /dev/null
             stop_damo ${DAMO_FILE} 
@@ -203,6 +210,7 @@ main() {
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
@@ -214,6 +222,7 @@ main() {
         esac
     $CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
     cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
+    mv ${SUITE}_${WORKLOAD}_strace.log $CUR_PATH/results/results_${SUITE}/
 
     clean_${SUITE}
 }

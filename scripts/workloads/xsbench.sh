@@ -15,6 +15,11 @@ run_xsbench(){
         $CUR_PATH/record_vma.sh $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
 }
 
+run_strace_xsbench(){
+    OMP_NUM_THREADS=$num_threads taskset 0xFF \
+        strace -e mmap,munmap -o xsbench_xsbench_strace.log $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+}
+
 clean_xsbench(){
     return
 }
