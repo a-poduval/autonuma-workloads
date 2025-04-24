@@ -54,6 +54,7 @@ wget https://pages.cs.wisc.edu/~apoduval/MERCI/data/5_patoh/amazon_All/partition
 cd ../../../..
 # now in merci
 cd 4_performance_evaluation/
+mkdir bin
 make -j20
 cd ../..
 # now in workloads
