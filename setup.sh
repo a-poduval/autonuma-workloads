@@ -26,7 +26,7 @@ make -j20
 cd ..
 
 # graph_500
-cd graph_500
+cd graph500
 git apply ../patches/graph500.patch
 cd src
 make -j20
