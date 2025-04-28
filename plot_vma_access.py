@@ -37,13 +37,16 @@ ranges['end'] = ranges['end'].astype(int)
 
 # Aggregate accesses for ranges
 epochs = len(address_accesses[0][1])
-heatmap_data = np.zeros((len(ranges), epochs))
+max_length = max(len(arr) for _, arr in address_accesses) # Find biggest epoch array
+#heatmap_data = np.zeros((len(ranges), epochs))
+heatmap_data = np.zeros((len(ranges), max_length))
 
 for i, row in ranges.iterrows():
     start, end = row['start'], row['end']
     for address, accesses in address_accesses:
         if start <= address <= end:
-            heatmap_data[i] += accesses  # Aggregate accesses
+            heatmap_data[i] += np.pad(accesses, (0, max_length - len(accesses)), 'constant')  # Aggregate accesses
+            #heatmap_data[i] += accesses  # Aggregate accesses
 
 # Step 3: Prepare for plotting
 time_periods = range(epochs)
@@ -56,4 +59,5 @@ plt.xlabel("Epoch/Time Period")
 plt.ylabel("Address Range")
 plt.title("Heat Map of Address Range Accesses for " + titlename)
 plt.axhline(y=0.5, color='black', linestyle='--')  # Example dashed lines
+plt.savefig(titlename+".png")
 plt.show()
