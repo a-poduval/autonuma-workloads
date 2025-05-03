@@ -2,11 +2,89 @@
 # WIP and very unstable. - Hayden Coffey
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import numpy as np
 import os
+import re
+from concurrent.futures import ProcessPoolExecutor
+import multiprocessing
 
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, hsv_to_rgb
+
+def parse_damon_region_log_file(file_path):
+    records = []
+    current_section = {}
+    global_base = None
+
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+
+    # Process the global header: first line should contain base_time_absolute
+    if lines and lines[0].startswith("base_time_absolute:"):
+        global_base = lines[0].split(":", 1)[1].strip()
+        # Remove this line from further processing
+        lines = lines[1:]
+
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        # Skip empty lines
+        if not line:
+            i += 1
+            continue
+
+        # Detect the start of a new section
+        if line.startswith("monitoring_start:"):
+            region_id = 0
+            current_section = {}
+            # Capture section metadata (monitoring_start, monitoring_end, etc.)
+            while i < len(lines) and lines[i].strip() and ':' in lines[i]:
+                meta_line = lines[i].strip()
+                # Stop when reaching the comment line that begins the table
+                if meta_line.startswith("#"):
+                    break
+                key, value = meta_line.split(":", 1)
+                current_section[key.strip()] = value.strip()
+                i += 1
+
+            # Now skip the column header line (which starts with "#")
+            if i < len(lines) and lines[i].strip().startswith("#"):
+                # Optionally, you could parse column names here:
+                # columns = lines[i].strip()[1:].split()
+                i += 1
+            continue  # Continue so we can start reading table rows
+
+        # Now, process table rows until a blank line or a new section
+        # Expected format:
+        # 555555554000-555555590000 (      245760)           0    22
+        pattern = r'(\S+-\S+)\s+\(\s*([0-9]+)\)\s+([0-9]+)\s+([0-9]+)'
+        m = re.match(pattern, line)
+        if m:
+            addr_range = m.group(1)
+            length = int(m.group(2))
+            nr_accesses = int(m.group(3))
+            age = int(m.group(4))
+            # Split the address range into start and end addresses
+            start_addr, end_addr = addr_range.split('-')
+
+            # Build a record with both section metadata and log fields
+            record = current_section.copy()
+            record.update({
+                "base_time_absolute": global_base,
+                "start_addr": start_addr,
+                "end_addr": end_addr,
+                "length": length,
+                "nr_accesses": nr_accesses,
+                "age": age,
+                "region_id": region_id
+                })
+            records.append(record)
+            region_id += 1
+        i += 1
+
+    # Convert list of records to a pandas DataFrame
+    return pd.DataFrame(records)
 
 def prepare_pebs_df(file):
     # Read the file line by line
@@ -41,6 +119,7 @@ def prepare_pebs_df(file):
     for col in df.columns[1:]:
         df[col] = pd.to_numeric(df[col])
 
+
     # Set PageFrame as index for easier time-series operations
     df.set_index("PageFrame", inplace=True)
 
@@ -60,49 +139,217 @@ def prepare_pebs_df(file):
 
     return delta_df
 
+def process_chunk(chunk_df, df_regions):
+    # Note: you have to pass df_regions in via a global or serialize it
+    # Here we assume it's a global variable accessible by child processes.
+    chunk_df['region_id'] = chunk_df.apply(lambda row: find_region_id(row, df_regions), axis=1)
+    return chunk_df
+
+def find_region_id(row, df2):
+    #print(row)
+    time = row['time']
+    addr = row['address']
+    matches = df2[
+            (df2['monitoring_start'] <= time) &
+            (df2['monitoring_end'] >= time) &
+            (df2['start_addr'] <= addr) &
+            (df2['end_addr'] >= addr)
+            ]
+    if not matches.empty:
+        return matches.iloc[0]['region_id']  # if multiple matches, take the first
+    else:
+        #print("Failed! time {} addr {}".format(time,addr))
+        #exit()
+        return None
+
 def prepare_damon_df(file):
     #file="gapbs_bc_damon.txt"
-    
-    print(file)
-    data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'])
-    data['address'] = data['address'].apply(lambda x: hex(x))
 
-    data = data.pivot(index='address', columns='time', values='frequency')
+    with open(file, 'r') as f:
+        header = f.readline().strip()
+    # header looks like: "[[140736213286912, 140737354133504]]"
+    # extract the two integers
+    print("File is : ", file)
+    print(header)
+    start, end = (map(int, re.findall(r'\d+', header)))
 
+    data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
+    data['time'] = data['time'].astype(int)
+    data['address'] = data['address'].astype(int) + start
+    data['frequency'] = data['frequency'].astype(float)
+
+    #print(data)
+    #data['address'] = data['address'].apply(lambda x: int(x,16))
+    #data['address'] = data['address'].apply(lambda x: hex(int(x,16) >> 12))
+
+    df_regions = parse_damon_region_log_file(file.split('.')[0] + ".region.damon.txt")
+
+    #df_regions['start_addr'] = df_regions['start_addr'].astype(int)
+    df_regions['start_addr'] = df_regions['start_addr'].apply(lambda x: int(x,16))
+    df_regions['end_addr'] = df_regions['end_addr'].apply(lambda x: int(x,16))
+    df_regions['monitoring_start'] = df_regions['monitoring_start'].astype(int)
+    df_regions['monitoring_end'] = df_regions['monitoring_end'].astype(int)
+    print(data)
+    print(df_regions)
+
+    #data = data[:5000]
+        # split into chunks
+
+    # Parallel ===========================
+    # Number of worker threads,
+    # could change to core count if memory consumed not too high
+    n_procs = multiprocessing.cpu_count()
+    chunks = np.array_split(data, n_procs)
+
+    # “freeze” df_regions into child processes by declaring it global
+    # (alternative: use functools.partial to bind it as an extra argument)
+    global _REGIONS
+    _REGIONS = df_regions
+
+    with ProcessPoolExecutor(max_workers=n_procs) as exe:
+        # map each chunk into its own process
+        futures = [exe.submit(process_chunk, chunk, _REGIONS) for chunk in chunks]
+
+        # collect results as they come back
+        results = [f.result() for f in futures]
+
+    # stitch your DataFrame back together
+    data = pd.concat(results, ignore_index=True)
+    #=====================================
+
+    # Sequential
+    #data['region_id'] = data.apply(lambda row: find_region_id(row, df_regions), axis=1)
+    print(data)
+
+    data['frequency'] = data['frequency'] * data['region_id']
+    print('-----')
+    data = data.dropna()
+
+    #with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
+    #    print(data)
+
+    print(data)
+    print(df_regions)
+
+    # Pivot needed for heatmap
+    #data = data.pivot(index='address', columns='time', values='frequency')
+    #data = data.pivot(index='address', columns='time', values='region_id')
+
+    print(data)
     return data
-    #sns.heatmap(data, cmap='viridis', norm=LogNorm())
+#sns.heatmap(data, cmap='viridis', norm=LogNorm())
     #plt.show()
     #print(data)
 
 
 def view(directory, file, pebs=True):
     df = None
-    if pebs:
-        df = prepare_pebs_df(file)
-        subdirectory="pebs"
-    else:
-        df = prepare_damon_df(file)
-        subdirectory="damon"
-    
-    output_dir = os.path.join(directory, subdirectory)
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    file_name=(file.split('/')[-1].split('.')[0])
-    output_path = os.path.join(output_dir, file_name + "_heatmap.png")
 
-    plt.figure(figsize=(12, 6))
-    sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
+    if pebs:
+        subdirectory="pebs"
+        return #TODO separate out pebs and damon graph logic
+
+    file_name=(file.split('/')[-1].split('.')[0])
+        output_dir = os.path.join(directory, subdirectory)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        output_path = os.path.join(output_dir, file_name + "_heatmap.png")
+
+        print("Checking {}".format(output_path))
+
+        if os.path.isfile(output_path):
+            print("Skipping {}".format(output_path))
+            return
+
+        df = prepare_pebs_df(file)
+    else:
+        #exit()
+        subdirectory="damon"
+
+        file_name=(file.split('/')[-1].split('.')[0])
+        output_dir = os.path.join(directory, subdirectory)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        output_path = os.path.join(output_dir, file_name + "_heatmap.png")
+
+        print("Checking {}".format(output_path))
+
+        if os.path.isfile(output_path):
+            print("Skipping {}".format(output_path))
+            return
+
+        df = prepare_damon_df(file)
+
+    #file_name=(file.split('/')[-1].split('.')[0])
+    #output_dir = os.path.join(directory, subdirectory)
+    #if not os.path.exists(output_dir):
+    #    os.makedirs(output_dir)
+
+    #output_path = os.path.join(output_dir, file_name + "_heatmap.png")
+    #
+    #print("Checking {}".format(output_path))
+
+    #if os.path.isfile(output_path):
+    #    print("Skipping {}".format(output_path))
+    #    return
+
+    plt.figure(figsize=(12, 12))
+
+    #=====================================
+    # Normalize intensity to [0,1]
+    print(df)
+    int_min, int_max = df['frequency'].min(), df['frequency'].max()
+    print('min max ', int_min, int_max)
+    #norm = LogNorm(vmin=int_min, vmax=int_max)#, clip=True)
+    eps = 1e-3  # or something small compared to your data
+    norm = LogNorm(vmin=int_min + eps, vmax=int_max + eps, clip=True)
+    #df['int_norm'] = (df['frequency'] - int_min) / (int_max - int_min)
+    df['int_norm'] = norm(df['frequency'])
+
+    # Assign a distinct hue for each region_id in HSV space
+    unique_regions = sorted(df['region_id'].unique())
+    n_regions = len(unique_regions)
+    hue_map = {reg: idx / n_regions for idx, reg in enumerate(unique_regions)}
+
+    # Build RGB colors by combining hue (category) and value (intensity)
+    colors = [
+            hsv_to_rgb([hue_map[r], 1.0, intensity])
+            for r, intensity in zip(df['region_id'], df['int_norm'])
+            ]
+
+    # Plot
+    #plt.figure(figsize=(8, 6))
+    plt.scatter(df['time'], df['address'], color=colors, s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+    ax = plt.gca()
+
+    # 1) Define a hex‐formatter: takes a float x and returns e.g. '0x1a3f'
+    hex_formatter = FuncFormatter(lambda x, pos: hex(int(x)))
+
+    # 2) Install it on the y‐axis
+    ax.yaxis.set_major_formatter(hex_formatter)
+    ax.invert_yaxis()
+    #=====================================
+
+    #sns.scatterplot(df, x='time', y='address', hue='region_id', palette=sns.color_palette("tab10"))
+
+    #sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
+
+    #sns.heatmap(df, cmap="viridis", cbar=True)
+
     plt.xlabel("Epoch")
     plt.ylabel("Page Frame")
-    plt.title(file + ": Access Counts Over Time")
+    plt.title(file + ": DAMON Regions")
+    #plt.show()
 
-    #plt.savefig(file_name + "_heatmap.png", dpi=300, bbox_inches="tight")
+    #print("Saving: ", file_name)
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    plt.show()
+    #exit()
 
 
 def main():
+    sns.set(font_scale=2)
 
     #file="gapbs_bc_damon.txt"
 
@@ -117,16 +364,26 @@ def main():
 
     #return
 
-    directory = "results_gapbs"
+    #directory = "results_masim_l_extend"
+    directory = "results_gapbs_n_m"
 
+    i = 0
     for filename in os.listdir(directory):
         file_path = os.path.join(directory, filename)
         if os.path.isfile(file_path):  # Ensure it's a file, not a directory
             isPebs = True
-            if file_path.endswith('.damon.txt'):
+            print(file_path)
+
+            if file_path.endswith('_damon.region.damon.txt'):
+                continue
+
+            if file_path.endswith('_damon.damon.txt'):
                 isPebs = False
+
+            #if i > 0:
             view(directory, file_path, isPebs)
-    
+            #i += 1
+
     #view(file)
 
 
