@@ -31,3 +31,6 @@
 [submodule "scripts/PEBS_page_tracking"]
 	path = scripts/PEBS_page_tracking
 	url = https://github.com/SujayYadalam94/PEBS_page_tracking.git
+[submodule "scripts/damo"]
+	path = scripts/damo
+	url = https://github.com/damonitor/damo.git
