@@ -1,11 +1,5 @@
 #!/bin/bash
 
-#Change if needed
-DAMO_PATH='/mydata/damo'
-export PATH=$DAMO_PATH:$PATH
-
-set -x
-
 # Function to display usage instructions
 usage() {
     echo "Usage: $0 workload [-f config_file.yaml]"
@@ -17,6 +11,8 @@ usage() {
     echo "  -i instrumentation          Instrumentation tool: 'pebs', 'damon' (default: none)"
     echo "  -s Damon Sampling Rate      Default: 5000 (microseconds) or 5ms"
     echo "  -a Damon Aggregate Rate     Default: 100ms"
+    echo "  -n Min # of Damon regions  (Optional)"
+    echo "  -m Max # of Damon regions  (Optional)"
     exit 1
 }
 
@@ -25,8 +21,17 @@ start_damo() {
     local proc_pid="$2"
     local sampling_period="$3"
     local agg_period="$4"
+    local min_num_region="$5"
+    local max_num_region="$6"
 
-    sudo env "PATH=$PATH" damo record -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
+    echo "Min ${min_num_region}"
+    echo "Max ${max_num_region}"
+
+    if [ -z "$min_num_region" ]; then
+        sudo env "PATH=$PATH" damo record -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
+    else
+        sudo env "PATH=$PATH" damo record --monitoring_nr_regions_range ${min_num_region} ${max_num_region} -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
+    fi
 }
 
 stop_damo() {
@@ -73,15 +78,20 @@ main() {
         usage
     fi
 
+    #Change if needed
     CUR_PATH="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    DAMO_PATH=$CUR_PATH/scripts/damo
     PEBS_PATH=$CUR_PATH/scripts/PEBS_page_tracking
     PEBS_PIPE="/tmp/pebs_pipe"
+
+    export PATH=$DAMO_PATH:$PATH
+
     WORKLOAD_SCRIPT_PATH=$CUR_PATH/scripts/workloads
     SAMPLING_RATE=5000
     AGG_RATE="100ms"
 
     # Process additional command-line options using getopts
-    while getopts "f:b:w:o:i:s:a:" opt; do
+    while getopts "f:b:w:o:i:s:a:n:m:" opt; do
         case ${opt} in
             f)
                 CONFIG_FILE="$OPTARG"
@@ -103,6 +113,12 @@ main() {
                 ;;
             a)
                 AGG_RATE="$OPTARG"
+                ;;
+            n)
+                MIN_NUM_DAMO="$OPTARG"
+                ;;
+            m)
+                MAX_NUM_DAMO="$OPTARG"
                 ;;
             *)
                 usage
@@ -185,11 +201,24 @@ main() {
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             echo "Running with DAMON."
+            if [ -z "$MAX_NUM_DAMO" ] && [ -z "$MIN_NUM_DAMO" ]; then
+                DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
+                # Run command should set $workload_pid variable.
+                run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
+            else
+                if [ -z "$MAX_NUM_DAMO" ]; then
+                    MAX_NUM_DAMO=$MIN_NUM_DAMO
+                elif [ -z "$MIN_NUM_DAMO" ]; then
+                    MIN_NUM_DAMO=$MAX_NUM_DAMO
+                fi
 
-            DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
-            # Run command should set $workload_pid variable.
-            run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
+                DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${MIN_NUM_DAMO}r_${MAX_NUM_DAMO}r_damon.dat
+                # Run command should set $workload_pid variable.
+                run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
+            fi
+
             tail --pid=$workload_pid -f /dev/null
             stop_damo ${DAMO_FILE} 
 
