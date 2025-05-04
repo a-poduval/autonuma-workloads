@@ -7,11 +7,14 @@ import seaborn as sns
 import numpy as np
 import os
 import re
+
+# Used to accelerate plotting DAMON figures.
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
 
 from matplotlib.colors import LogNorm, hsv_to_rgb
 
+# Return a df for the damon region file
 def parse_damon_region_log_file(file_path):
     records = []
     current_section = {}
@@ -86,6 +89,7 @@ def parse_damon_region_log_file(file_path):
     # Convert list of records to a pandas DataFrame
     return pd.DataFrame(records)
 
+# Prepare a df for given PEBS sample file
 def prepare_pebs_df(file):
     # Read the file line by line
     with open(file) as f:
@@ -115,6 +119,8 @@ def prepare_pebs_df(file):
     df.rename(columns={0: "PageFrame"}, inplace=True)
     df.columns = ["PageFrame"] + [f"Epoch_{i}" for i in range(1, max_cols)]
 
+    df["PageFrame"] = df["PageFrame"].apply(lambda x: hex(int(x, 16) << 21))
+
     # Convert epoch columns to numeric
     for col in df.columns[1:]:
         df[col] = pd.to_numeric(df[col])
@@ -139,6 +145,7 @@ def prepare_pebs_df(file):
 
     return delta_df
 
+#Concurrent DAMON df preprocessing operations=====================
 def process_chunk(chunk_df, df_regions):
     # Note: you have to pass df_regions in via a global or serialize it
     # Here we assume it's a global variable accessible by child processes.
@@ -161,16 +168,16 @@ def find_region_id(row, df2):
         #print("Failed! time {} addr {}".format(time,addr))
         #exit()
         return None
+#========================================================
 
+# Prepare df from given DAMON heatmap file
 def prepare_damon_df(file):
-    #file="gapbs_bc_damon.txt"
-
     with open(file, 'r') as f:
         header = f.readline().strip()
+
+    # File starts with memory region address offset
     # header looks like: "[[140736213286912, 140737354133504]]"
     # extract the two integers
-    print("File is : ", file)
-    print(header)
     start, end = (map(int, re.findall(r'\d+', header)))
 
     data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
@@ -178,27 +185,19 @@ def prepare_damon_df(file):
     data['address'] = data['address'].astype(int) + start
     data['frequency'] = data['frequency'].astype(float)
 
-    #print(data)
-    #data['address'] = data['address'].apply(lambda x: int(x,16))
-    #data['address'] = data['address'].apply(lambda x: hex(int(x,16) >> 12))
-
     df_regions = parse_damon_region_log_file(file.split('.')[0] + ".region.damon.txt")
 
-    #df_regions['start_addr'] = df_regions['start_addr'].astype(int)
     df_regions['start_addr'] = df_regions['start_addr'].apply(lambda x: int(x,16))
     df_regions['end_addr'] = df_regions['end_addr'].apply(lambda x: int(x,16))
     df_regions['monitoring_start'] = df_regions['monitoring_start'].astype(int)
     df_regions['monitoring_end'] = df_regions['monitoring_end'].astype(int)
-    print(data)
-    print(df_regions)
 
-    #data = data[:5000]
-        # split into chunks
-
-    # Parallel ===========================
+    # Address to DAMON region lookup (done in parallel)===========================
     # Number of worker threads,
     # could change to core count if memory consumed not too high
     n_procs = multiprocessing.cpu_count()
+
+    # split into chunks
     chunks = np.array_split(data, n_procs)
 
     # “freeze” df_regions into child processes by declaring it global
@@ -217,89 +216,20 @@ def prepare_damon_df(file):
     data = pd.concat(results, ignore_index=True)
     #=====================================
 
-    # Sequential
+    # Sequential implemenation (very slow)
     #data['region_id'] = data.apply(lambda row: find_region_id(row, df_regions), axis=1)
-    print(data)
 
-    data['frequency'] = data['frequency'] * data['region_id']
     print('-----')
     data = data.dropna()
 
-    #with pd.option_context('display.max_rows', None, 'display.max_columns', None):  # more options can be specified also
-    #    print(data)
-
-    print(data)
-    print(df_regions)
-
-    # Pivot needed for heatmap
-    #data = data.pivot(index='address', columns='time', values='frequency')
-    #data = data.pivot(index='address', columns='time', values='region_id')
-
-    print(data)
     return data
-#sns.heatmap(data, cmap='viridis', norm=LogNorm())
-    #plt.show()
-    #print(data)
 
-
-def view(directory, file, pebs=True):
-    df = None
-
-    if pebs:
-        subdirectory="pebs"
-        return #TODO separate out pebs and damon graph logic
-
-    file_name=(file.split('/')[-1].split('.')[0])
-        output_dir = os.path.join(directory, subdirectory)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        output_path = os.path.join(output_dir, file_name + "_heatmap.png")
-
-        print("Checking {}".format(output_path))
-
-        if os.path.isfile(output_path):
-            print("Skipping {}".format(output_path))
-            return
-
-        df = prepare_pebs_df(file)
-    else:
-        #exit()
-        subdirectory="damon"
-
-        file_name=(file.split('/')[-1].split('.')[0])
-        output_dir = os.path.join(directory, subdirectory)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        output_path = os.path.join(output_dir, file_name + "_heatmap.png")
-
-        print("Checking {}".format(output_path))
-
-        if os.path.isfile(output_path):
-            print("Skipping {}".format(output_path))
-            return
-
-        df = prepare_damon_df(file)
-
-    #file_name=(file.split('/')[-1].split('.')[0])
-    #output_dir = os.path.join(directory, subdirectory)
-    #if not os.path.exists(output_dir):
-    #    os.makedirs(output_dir)
-
-    #output_path = os.path.join(output_dir, file_name + "_heatmap.png")
-    #
-    #print("Checking {}".format(output_path))
-
-    #if os.path.isfile(output_path):
-    #    print("Skipping {}".format(output_path))
-    #    return
+def generate_damon_figure(file, output_path):
+    df = prepare_damon_df(file)
 
     plt.figure(figsize=(12, 12))
-
     #=====================================
     # Normalize intensity to [0,1]
-    print(df)
     int_min, int_max = df['frequency'].min(), df['frequency'].max()
     print('min max ', int_min, int_max)
     #norm = LogNorm(vmin=int_min, vmax=int_max)#, clip=True)
@@ -315,13 +245,15 @@ def view(directory, file, pebs=True):
 
     # Build RGB colors by combining hue (category) and value (intensity)
     colors = [
-            hsv_to_rgb([hue_map[r], 1.0, intensity])
+            #hsv_to_rgb([hue_map[r], 1.0, intensity]) #Uncomment if we want to also show frequency info
+            hsv_to_rgb([hue_map[r], 1.0, 1]) 
             for r, intensity in zip(df['region_id'], df['int_norm'])
             ]
 
     # Plot
     #plt.figure(figsize=(8, 6))
     plt.scatter(df['time'], df['address'], color=colors, s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+    #plt.scatter(df['time'], df['address'], s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
     ax = plt.gca()
 
     # 1) Define a hex‐formatter: takes a float x and returns e.g. '0x1a3f'
@@ -332,12 +264,6 @@ def view(directory, file, pebs=True):
     ax.invert_yaxis()
     #=====================================
 
-    #sns.scatterplot(df, x='time', y='address', hue='region_id', palette=sns.color_palette("tab10"))
-
-    #sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
-
-    #sns.heatmap(df, cmap="viridis", cbar=True)
-
     plt.xlabel("Epoch")
     plt.ylabel("Page Frame")
     plt.title(file + ": DAMON Regions")
@@ -345,27 +271,47 @@ def view(directory, file, pebs=True):
 
     #print("Saving: ", file_name)
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-    #exit()
 
+def generate_pebs_figure(file, output_path):
+    df = prepare_pebs_df(file)
+    plt.figure(figsize=(12, 12))
+    sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Page Frame")
+    plt.title(file + ": PEBS")
+
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+
+
+def view(directory, file, pebs=True):
+    if pebs:
+        subdirectory="pebs"
+    else:
+        subdirectory="damon"
+
+    file_name=(file.split('/')[-1].split('.')[0])
+    output_dir = os.path.join(directory, subdirectory)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    output_path = os.path.join(output_dir, file_name + "_heatmap.png")
+
+    print("Checking {}".format(output_path))
+
+    if os.path.isfile(output_path):
+        print("Skipping {}".format(output_path))
+        return
+
+    if pebs:
+        generate_pebs_figure(file, output_path)
+    else:
+        generate_damon_figure(file, output_path)
 
 def main():
     sns.set(font_scale=2)
 
-    #file="gapbs_bc_damon.txt"
-
-    #data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'])
-    #data['address'] = data['address'].apply(lambda x: hex(x))
-
-    #data = data.pivot(index='address', columns='time', values='frequency')
-    #sns.heatmap(data, cmap='viridis', norm=LogNorm())
-    #plt.show()
-    #print(data)
-
-
-    #return
-
-    #directory = "results_masim_l_extend"
-    directory = "results_gapbs_n_m"
+    directory = "results_gapbs_auto"
 
     i = 0
     for filename in os.listdir(directory):
@@ -380,12 +326,7 @@ def main():
             if file_path.endswith('_damon.damon.txt'):
                 isPebs = False
 
-            #if i > 0:
             view(directory, file_path, isPebs)
-            #i += 1
-
-    #view(file)
-
 
 if __name__ == "__main__":
     main()
