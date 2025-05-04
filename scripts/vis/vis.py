@@ -129,6 +129,8 @@ def prepare_pebs_df(file):
     # Set PageFrame as index for easier time-series operations
     df.set_index("PageFrame", inplace=True)
 
+    df = df.copy() # Improves performance? df is sparse otherwise
+
     # Compute the deltas across epochs
     delta_df = df.diff(axis=1)
 
@@ -141,7 +143,16 @@ def prepare_pebs_df(file):
 
     # Optional: Convert column names to a numeric index if desired
     # For plotting purposes, we can remove the 'Epoch_' prefix and convert to int
-    delta_df.columns = [int(col.replace("Epoch_", "")) for col in delta_df.columns]
+    delta_df.columns = [int(col.replace("Epoch_", ""))*0.5 for col in delta_df.columns]
+
+    # If we want to use plt instead of sns, melt df into long form
+    #df_long = (
+    #    delta_df
+    #    .reset_index()
+    #    .melt(id_vars=["PageFrame"], var_name="epoch", value_name="value")
+    #)
+    #df_long["PageFrame"] = df_long["PageFrame"].apply(lambda x: int(x,16))
+    #return df_long
 
     return delta_df
 
@@ -181,7 +192,7 @@ def prepare_damon_df(file):
     start, end = (map(int, re.findall(r'\d+', header)))
 
     data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
-    data['time'] = data['time'].astype(int)
+    data['time'] = data['time'].astype(float) / (1e9) #convert ns to s
     data['address'] = data['address'].astype(int) + start
     data['frequency'] = data['frequency'].astype(float)
 
@@ -189,8 +200,10 @@ def prepare_damon_df(file):
 
     df_regions['start_addr'] = df_regions['start_addr'].apply(lambda x: int(x,16))
     df_regions['end_addr'] = df_regions['end_addr'].apply(lambda x: int(x,16))
-    df_regions['monitoring_start'] = df_regions['monitoring_start'].astype(int)
-    df_regions['monitoring_end'] = df_regions['monitoring_end'].astype(int)
+
+    #Convert times from ns to s
+    df_regions['monitoring_start'] = df_regions['monitoring_start'].astype(float) / (1e9)
+    df_regions['monitoring_end'] = df_regions['monitoring_end'].astype(float) / (1e9)
 
     # Address to DAMON region lookup (done in parallel)===========================
     # Number of worker threads,
@@ -264,9 +277,9 @@ def generate_damon_figure(file, output_path):
     ax.invert_yaxis()
     #=====================================
 
-    plt.xlabel("Epoch")
+    plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
-    plt.title(file + ": DAMON Regions")
+    plt.title(file)
     #plt.show()
 
     #print("Saving: ", file_name)
@@ -277,12 +290,21 @@ def generate_pebs_figure(file, output_path):
     plt.figure(figsize=(12, 12))
     sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
 
-    plt.xlabel("Epoch")
+    # If we want to use plt instead of sns
+    #plt.scatter(df['epoch'], df['PageFrame'], c=df['value'], s=50, norm=LogNorm(), edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+
+    #ax = plt.gca()
+    ## 1) Define a hex‐formatter: takes a float x and returns e.g. '0x1a3f'
+    #hex_formatter = FuncFormatter(lambda x, pos: hex(int(x)))
+
+    ## 2) Install it on the y‐axis
+    #ax.yaxis.set_major_formatter(hex_formatter)
+    #ax.invert_yaxis()
+
+    plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
     plt.title(file + ": PEBS")
-
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
-
 
 def view(directory, file, pebs=True):
     if pebs:
