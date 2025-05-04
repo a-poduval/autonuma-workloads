@@ -3,7 +3,7 @@
 config_xsbench(){
     num_threads=8
     particles=20000000 # Should take about 64G
-    gridpoints=1300
+    gridpoints=130000
 }
 
 build_xsbench(){

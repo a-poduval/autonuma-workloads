@@ -220,8 +220,10 @@ main() {
             exit 1
             ;;
         esac
-    $CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
+    #$CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
     cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
+    python coalesce_smap.py memory_regions.csv
+    mv smap_deduplicated.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
     mv ${SUITE}_${WORKLOAD}_strace.log $CUR_PATH/results/results_${SUITE}/
 
     clean_${SUITE}

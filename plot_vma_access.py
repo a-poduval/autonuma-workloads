@@ -59,5 +59,5 @@ plt.xlabel("Epoch/Time Period")
 plt.ylabel("Address Range")
 plt.title("Heat Map of Address Range Accesses for " + titlename)
 plt.axhline(y=0.5, color='black', linestyle='--')  # Example dashed lines
-plt.savefig(titlename+".png")
+plt.savefig(titlename+".png", dpi=300, bbox_inches="tight")
 plt.show()
