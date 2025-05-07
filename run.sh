@@ -70,7 +70,8 @@ stop_damo() {
 
     #Without sleep, heatmap command sometimes fails.
     sleep 10 
-    sudo env "PATH=$PATH" damo report heatmap --output raw --input $output_file > $text_output_file 
+    sudo env "PATH=$PATH" damo report heatmap --output raw --input $output_file --resol 1000 1000 --draw_range all \
+        > $text_output_file
     sleep 10 
     sudo env "PATH=$PATH" damo report access --raw_form --raw_number --input $output_file > $text_region_output_file
 }
