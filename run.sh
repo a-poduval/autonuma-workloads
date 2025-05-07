@@ -13,6 +13,8 @@ usage() {
     echo "  -a Damon Aggregate Rate     Default: 100ms"
     echo "  -n Min # of Damon regions  (Optional)"
     echo "  -m Max # of Damon regions  (Optional)"
+    echo "  -x Damon auto access_bp    (Optional)"
+    echo "  -y Damon auto aggrs        (Optional)"
     exit 1
 }
 
@@ -31,6 +33,32 @@ start_damo() {
         sudo env "PATH=$PATH" damo record -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
     else
         sudo env "PATH=$PATH" damo record --monitoring_nr_regions_range ${min_num_region} ${max_num_region} -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
+    fi
+}
+
+start_damo_autotune() {
+    local output_file="$1"
+    local proc_pid="$2"
+    local sampling_period="$3"
+    local agg_period="$4"
+    local min_num_region="$5"
+    local max_num_region="$6"
+
+    echo "Min ${min_num_region}"
+    echo "Max ${max_num_region}"
+
+    if [ -z "$DAMON_AUTO_AGGRS" ]; then
+        $DAMON_AUTO_ACCESS_BP=4
+        $DAMON_AUTO_AGGRS=100
+    fi
+
+    echo "access_bp ${DAMON_AUTO_ACCESS_BP}"
+    echo "AGGRS ${DAMON_AUTO_AGGRS}"
+
+    if [ -z "$min_num_region" ]; then
+        sudo env "PATH=$PATH" damo record --monitoring_intervals_goal ${DAMON_AUTO_ACCESS_BP} ${DAMON_AUTO_AGGRS} 2000 8000000 -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
+    else
+        sudo env "PATH=$PATH" damo record --monitoring_intervals_goal ${DAMON_AUTO_ACCESS_BP} ${DAMON_AUTO_AGGRS} 2000 8000000 --monitoring_nr_regions_range ${min_num_region} ${max_num_region} -s ${sampling_period} -a ${agg_period} -o $output_file $proc_pid &
     fi
 }
 
@@ -72,6 +100,10 @@ stop_pebs() {
     sudo rm -f $PEBS_PIPE
 }
 
+# DAMON Auto tune params
+DAMON_AUTO_ACCESS_BP=""
+DAMON_AUTO_AGGRS=""
+
 main() {
     # Ensure at least one argument (workload) is provided
     if [ "$#" -lt 1 ]; then
@@ -91,7 +123,7 @@ main() {
     AGG_RATE="100ms"
 
     # Process additional command-line options using getopts
-    while getopts "f:b:w:o:i:s:a:n:m:" opt; do
+    while getopts "f:b:w:o:i:s:a:n:m:x:y:" opt; do
         case ${opt} in
             f)
                 CONFIG_FILE="$OPTARG"
@@ -120,12 +152,22 @@ main() {
             m)
                 MAX_NUM_DAMO="$OPTARG"
                 ;;
+            x)
+                DAMON_AUTO_ACCESS_BP="$OPTARG"
+                ;;
+            y)
+                DAMON_AUTO_AGGRS="$OPTARG"
+                ;;
             *)
                 usage
                 ;;
         esac
     done
     
+    if [ -z "$DAMON_AUTO_AGGRS" ]; then
+        echo "Doesnt Exists!"
+    fi
+
     #Check that suite and workload have been provided 
     if [ -z "$SUITE" ] || [ -z "$WORKLOAD" ] || [ -z "$OUTPUT_DIR" ]; then
         usage
@@ -202,10 +244,16 @@ main() {
 
             echo "Running with DAMON."
             if [ -z "$MAX_NUM_DAMO" ] && [ -z "$MIN_NUM_DAMO" ]; then
-                DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
+
+                if [ -z "$DAMON_AUTO_AGGRS" ]; then
+                    DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
+                else
+                    DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${DAMON_AUTO_ACCESS_BP}bp_${DAMON_AUTO_AGGRS}agg_damon.dat
+                fi
+
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-                start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
+                start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
             else
                 if [ -z "$MAX_NUM_DAMO" ]; then
                     MAX_NUM_DAMO=$MIN_NUM_DAMO
@@ -213,10 +261,14 @@ main() {
                     MIN_NUM_DAMO=$MAX_NUM_DAMO
                 fi
 
-                DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${MIN_NUM_DAMO}r_${MAX_NUM_DAMO}r_damon.dat
+                if [ -z "$DAMON_AUTO_AGGRS" ]; then
+                    DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${MIN_NUM_DAMO}r_${MAX_NUM_DAMO}r_damon.dat
+                else
+                    DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${MIN_NUM_DAMO}r_${MAX_NUM_DAMO}r_${DAMON_AUTO_ACCESS_BP}bp_${DAMON_AUTO_AGGRS}agg_damon.dat
+                fi
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-                start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
+                start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
             fi
 
             tail --pid=$workload_pid -f /dev/null
