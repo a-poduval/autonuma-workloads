@@ -2,8 +2,7 @@
 
 # Function to display usage instructions
 usage() {
-    echo "Usage: $0 workload [-f config_file.yaml]"
-    echo "  workload                    Name of the workload to run (e.g., pr)"
+    echo "Usage: $0 benchmark_suite workload [-f config_file.yaml]"
     echo "  -b                          Benchmark suite"
     echo "  -w                          Workload"
     echo "  -o                          Output directory"
@@ -106,6 +105,10 @@ DAMON_AUTO_ACCESS_BP=""
 DAMON_AUTO_AGGRS=""
 
 main() {
+
+    #. ./scripts/parse_args.sh $@
+    #print_cmd_args
+    #exit
     # Ensure at least one argument (workload) is provided
     if [ "$#" -lt 1 ]; then
         usage
@@ -247,10 +250,12 @@ main() {
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
             # Re-enable SMT after running
-            echo off | sudo tee /sys/devices/system/cpu/smt/control
+            echo on | sudo tee /sys/devices/system/cpu/smt/control
             ;;
 
         damon)
+            # Disable SMT before running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             echo "Running with DAMON."
@@ -264,6 +269,7 @@ main() {
 
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
             else
                 if [ -z "$MAX_NUM_DAMO" ]; then
@@ -279,24 +285,20 @@ main() {
                 fi
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
             fi
-
-#<<<<<<< HEAD
-#=======
-            #DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
-            # Run command should set $workload_pid variable.
-            #run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            #start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
-#>>>>>>> origin/ashwin/vma_profiling
 
             tail --pid=$workload_pid -f /dev/null
             stop_damo ${DAMO_FILE} 
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            # Re-enable SMT after running
+            echo on | sudo tee /sys/devices/system/cpu/smt/control
             ;;
         "")
+            # Disable SMT before running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
@@ -304,6 +306,8 @@ main() {
             tail --pid=$workload_pid -f /dev/null
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            # Re-enable SMT after running
+            echo on | sudo tee /sys/devices/system/cpu/smt/control
             ;;
         *)
             echo "ERROR: Unknown instrumentation option '$INSTRUMENT'. Valid options are 'pebs' or 'damon'."
