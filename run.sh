@@ -197,9 +197,14 @@ main() {
     # Source the workload script.
     source "${SUITE_SCRIPT}"
 
-    # Expect the workload script to define run, build, and config functions 
+    # Expect the workload script to define run, run_strace, build, and config functions
     if ! declare -f "run_${SUITE}" > /dev/null; then
         echo "ERROR: Function run_${SUITE} not defined in ${SUITE_SCRIPT}"
+        exit 1
+    fi
+
+    if ! declare -f "run_strace_${SUITE}" > /dev/null; then
+        echo "ERROR: Function run_strace_${SUITE} not defined in ${SUITE_SCRIPT}"
         exit 1
     fi
 
@@ -228,16 +233,21 @@ main() {
     case "$INSTRUMENT" in
         # PEBS starts before workload, damo starts after.
         pebs)
+            # Disable SMT before running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             echo "Running with PEBS."
             start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
             stop_pebs
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+            # Re-enable SMT after running
+            echo off | sudo tee /sys/devices/system/cpu/smt/control
             ;;
 
         damon)
@@ -272,6 +282,15 @@ main() {
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
             fi
 
+#<<<<<<< HEAD
+#=======
+            #DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_damon.dat
+            # Run command should set $workload_pid variable.
+            #run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            #start_damo ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
+#>>>>>>> origin/ashwin/vma_profiling
+
             tail --pid=$workload_pid -f /dev/null
             stop_damo ${DAMO_FILE} 
 
@@ -281,6 +300,7 @@ main() {
             echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
 
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
 
             echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
@@ -290,6 +310,11 @@ main() {
             exit 1
             ;;
         esac
+    #$CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
+    cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
+    python coalesce_smap.py memory_regions.csv
+    mv smap_deduplicated.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
+    mv ${SUITE}_${WORKLOAD}_strace.log $CUR_PATH/results/results_${SUITE}/
 
     clean_${SUITE}
 }
