@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import numpy as np
+import sys
 import os
 import re
 
@@ -182,7 +183,7 @@ def find_region_id(row, df2):
 #========================================================
 
 # Prepare df from given DAMON heatmap file
-def prepare_damon_df(file):
+def prepare_damon_df(file, output_path):
     damon_draw_group = -1
     records = []
     start = None
@@ -217,18 +218,15 @@ def prepare_damon_df(file):
 
     # build DataFrame
     data = pd.DataFrame.from_records(records, columns=['time','address','frequency', 'damon_draw_group'])
-    #with open(file, 'r') as f:
-    #    header = f.readline().strip()
 
-    ## File starts with memory region address offset
-    ## header looks like: "[[140736213286912, 140737354133504]]"
-    ## extract the two integers
-    #start, end = (map(int, re.findall(r'\d+', header)))
-
-    #data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
-    #data['time'] = data['time'].astype(float) / (1e9) #convert ns to s
-    #data['address'] = data['address'].astype(int) + start
-    #data['frequency'] = data['frequency'].astype(float)
+    # Check if we have plotted some of these figures before, can save a lot of time
+    # by not recalculating everything for these data points.
+    for draw_group in data['damon_draw_group'].unique():
+        tmp_file = output_path + "_{}dg_heatmap.png".format(str(draw_group))
+        print("Checking " + tmp_file)
+        if os.path.isfile(tmp_file):
+            print("Skipping {}".format(tmp_file))
+            data = data[data['damon_draw_group'] != draw_group]
 
     print(data)
 
@@ -274,10 +272,10 @@ def prepare_damon_df(file):
     return data
 
 def generate_damon_figure(file, output_path):
-    df = prepare_damon_df(file)
+    df = prepare_damon_df(file, output_path)
 
     for draw_group in df['damon_draw_group'].unique():
-        tmp_df = df[df['damon_draw_group'] == draw_group]
+        tmp_df = df[df['damon_draw_group'] == draw_group].copy()
 
         plt.figure(figsize=(12, 12))
         #=====================================
@@ -291,7 +289,7 @@ def generate_damon_figure(file, output_path):
         tmp_df['int_norm'] = norm(tmp_df['frequency'])
 
         # Assign a distinct hue for each region_id in HSV space
-        unique_regions = sorted(tmp_df['region_id'].unique())
+        unique_regions = sorted(df['region_id'].unique())
         n_regions = len(unique_regions)
         hue_map = {reg: idx / n_regions for idx, reg in enumerate(unique_regions)}
 
@@ -319,10 +317,11 @@ def generate_damon_figure(file, output_path):
         plt.xlabel("Time (s)")
         plt.ylabel("Page Frame")
         plt.title(file)
+        plt.legend()
         #plt.show()
 
         #print("Saving: ", file_name)
-        plt.savefig(output_path + "{}dg_heatmap.png".format(draw_group), dpi=300, bbox_inches="tight")
+        plt.savefig(output_path + "_{}dg_heatmap.png".format(draw_group), dpi=300, bbox_inches="tight")
 
 def generate_pebs_figure(file, output_path):
     df = prepare_pebs_df(file)
@@ -343,7 +342,7 @@ def generate_pebs_figure(file, output_path):
     plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
     plt.title(file + ": PEBS")
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.savefig(output_path + "_heatmap.png", dpi=300, bbox_inches="tight")
 
 def view(directory, file, pebs=True):
     if pebs:
@@ -358,11 +357,11 @@ def view(directory, file, pebs=True):
 
     output_path = os.path.join(output_dir, file_name) #+ "_heatmap.png")
 
-    print("Checking {}".format(output_path))
+    #print("Checking {}".format(output_path))
 
-    if os.path.isfile(output_path):
-        print("Skipping {}".format(output_path))
-        return
+    #if os.path.isfile(output_path):
+    #    print("Skipping {}".format(output_path))
+    #    return
 
     if pebs:
         generate_pebs_figure(file, output_path)
@@ -372,7 +371,11 @@ def view(directory, file, pebs=True):
 def main():
     sns.set(font_scale=2)
 
-    directory = "results_gapbs_example"
+    assert len(sys.argv) == 2
+
+    directory = sys.argv[1]
+
+    assert os.path.isdir(directory)
 
     i = 0
     for filename in os.listdir(directory):
@@ -381,11 +384,13 @@ def main():
             isPebs = True
             print(file_path)
 
-            if file_path.endswith('_damon.region.damon.txt'):
-                continue
+            #if file_path.endswith('_damon.region.damon.txt'):
+            #    continue
 
             if file_path.endswith('_damon.damon.txt'):
                 isPebs = False
+            elif not file_path.endswith('samples.txt'):
+                continue
 
             view(directory, file_path, isPebs)
 

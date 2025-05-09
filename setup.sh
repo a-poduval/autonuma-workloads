@@ -6,6 +6,8 @@ git submodule update
 sudo apt update
 sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev mpich
 
+conda create -n dataVis pandas matplotlib seaborn -y
+
 # PEBS
 cd scripts/PEBS_page_tracking/
 git apply ../../patches/pebs.patch
