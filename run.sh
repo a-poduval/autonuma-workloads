@@ -68,10 +68,10 @@ stop_damo() {
     sudo env "PATH=$PATH" damo stop #Looks Like damo ends on its own
 
     #Without sleep, heatmap command sometimes fails.
-    sleep 10 
+    sleep 10
     sudo env "PATH=$PATH" damo report heatmap --output raw --input $output_file --resol 1000 1000 --draw_range all \
         > $text_output_file
-    sleep 10 
+    sleep 10
     sudo env "PATH=$PATH" damo report access --raw_form --raw_number --input $output_file > $text_region_output_file
 }
 
@@ -98,6 +98,20 @@ stop_pebs() {
     echo "Stopping PEBS"
     sudo echo "q" > $PEBS_PIPE
     sudo rm -f $PEBS_PIPE
+}
+
+sys_init() {
+    # Disable SMT
+    echo off | sudo tee /sys/devices/system/cpu/smt/control
+    # Disable randomized va space
+    echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+}
+
+sys_cleanup(){
+    # Re-enable randomized va space
+    echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
+    # Re-enable SMT
+    echo on | sudo tee /sys/devices/system/cpu/smt/control
 }
 
 # DAMON Auto tune params
@@ -167,7 +181,7 @@ main() {
                 ;;
         esac
     done
-    
+
     if [ -z "$DAMON_AUTO_AGGRS" ]; then
         echo "Doesnt Exists!"
     fi
@@ -225,38 +239,32 @@ main() {
         echo "ERROR: Function clean_${SUITE} not defined in ${SUITE_SCRIPT}"
         exit 1
     fi
-    
+
     # Set config
     config_${SUITE} ${CONFIG_FILE} ${WORKLOAD}
-    
+
     # Build workload
     build_${SUITE} ${WORKLOAD}
-    
+
     # Call the workload function, passing the config file (if any).
     case "$INSTRUMENT" in
         # PEBS starts before workload, damo starts after.
         pebs)
-            # Disable SMT before running
-            echo off | sudo tee /sys/devices/system/cpu/smt/control
-            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+            sys_init
 
             echo "Running with PEBS."
             start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
             stop_pebs
 
-            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
-            # Re-enable SMT after running
-            echo on | sudo tee /sys/devices/system/cpu/smt/control
+            sys_cleanup
             ;;
 
         damon)
-            # Disable SMT before running
-            echo off | sudo tee /sys/devices/system/cpu/smt/control
-            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+            sys_init
 
             echo "Running with DAMON."
             if [ -z "$MAX_NUM_DAMO" ] && [ -z "$MIN_NUM_DAMO" ]; then
@@ -269,7 +277,7 @@ main() {
 
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-                run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE
             else
                 if [ -z "$MAX_NUM_DAMO" ]; then
@@ -285,40 +293,35 @@ main() {
                 fi
                 # Run command should set $workload_pid variable.
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-                run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+                #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
             fi
 
             tail --pid=$workload_pid -f /dev/null
             stop_damo ${DAMO_FILE} 
 
-            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
-            # Re-enable SMT after running
-            echo on | sudo tee /sys/devices/system/cpu/smt/control
+            sys_cleanup
             ;;
         "")
-            # Disable SMT before running
-            echo off | sudo tee /sys/devices/system/cpu/smt/control
-            echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+            sys_init
 
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
-            run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
+            #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             tail --pid=$workload_pid -f /dev/null
 
-            echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
-            # Re-enable SMT after running
-            echo on | sudo tee /sys/devices/system/cpu/smt/control
+            sys_cleanup
             ;;
         *)
             echo "ERROR: Unknown instrumentation option '$INSTRUMENT'. Valid options are 'pebs' or 'damon'."
             exit 1
             ;;
-        esac
+    esac
+
     #$CUR_PATH/largest_vma.sh -i memory_regions.csv -o $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
-    cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
-    python coalesce_smap.py memory_regions.csv
-    mv smap_deduplicated.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
-    mv ${SUITE}_${WORKLOAD}_strace.log $CUR_PATH/results/results_${SUITE}/
+    #cp memory_regions.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_smaps_ts.csv
+    #python coalesce_smap.py memory_regions.csv
+    #mv smap_deduplicated.csv $CUR_PATH/results/results_${SUITE}/${SUITE}_${WORKLOAD}_vma.csv
+    #mv ${SUITE}_${WORKLOAD}_strace.log $CUR_PATH/results/results_${SUITE}/
 
     clean_${SUITE}
 }

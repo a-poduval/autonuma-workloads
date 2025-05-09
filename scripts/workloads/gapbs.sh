@@ -17,13 +17,16 @@ run_gapbs(){
 
     if [ $workload == "cc" ] || [ $workload == "cc_sv" ] || [ $workload == "bfs" ] || [ $workload == "tc" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     elif [ $workload == "sssp" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
     else
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     fi
 
     workload_pid=$!

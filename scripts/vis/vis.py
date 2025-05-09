@@ -183,18 +183,54 @@ def find_region_id(row, df2):
 
 # Prepare df from given DAMON heatmap file
 def prepare_damon_df(file):
+    damon_draw_group = -1
+    records = []
+    start = None
+
+    header_re = re.compile(r'^\[(\d+),\s*(\d+)\]$')
+
     with open(file, 'r') as f:
-        header = f.readline().strip()
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
 
-    # File starts with memory region address offset
-    # header looks like: "[[140736213286912, 140737354133504]]"
-    # extract the two integers
-    start, end = (map(int, re.findall(r'\d+', header)))
+            # If this line is a new [start,end] header, parse it
+            m = header_re.match(line)
+            if m:
+                start = int(m.group(1))
+                damon_draw_group += 1
+                #if damon_draw_group > 0:
+                    #break
+                # (we ignore 'end' here since you only need 'start')
+                continue
 
-    data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
-    data['time'] = data['time'].astype(float) / (1e9) #convert ns to s
-    data['address'] = data['address'].astype(int) + start
-    data['frequency'] = data['frequency'].astype(float)
+            # Otherwise it should be a data row: time address frequency
+            # split on whitespace:
+            time_ns, addr_off, freq = line.split()
+            records.append({
+                'time':      float(time_ns) / 1e9,
+                'address':     int(addr_off) + start,
+                'frequency':   float(freq),
+                'damon_draw_group':   int(damon_draw_group)
+            })
+
+    # build DataFrame
+    data = pd.DataFrame.from_records(records, columns=['time','address','frequency', 'damon_draw_group'])
+    #with open(file, 'r') as f:
+    #    header = f.readline().strip()
+
+    ## File starts with memory region address offset
+    ## header looks like: "[[140736213286912, 140737354133504]]"
+    ## extract the two integers
+    #start, end = (map(int, re.findall(r'\d+', header)))
+
+    #data = pd.read_csv(file, header=None, delim_whitespace=True, names=['time', 'address', 'frequency'], skiprows=1)
+    #data['time'] = data['time'].astype(float) / (1e9) #convert ns to s
+    #data['address'] = data['address'].astype(int) + start
+    #data['frequency'] = data['frequency'].astype(float)
+
+    print(data)
 
     df_regions = parse_damon_region_log_file(file.split('.')[0] + ".region.damon.txt")
 
@@ -240,50 +276,53 @@ def prepare_damon_df(file):
 def generate_damon_figure(file, output_path):
     df = prepare_damon_df(file)
 
-    plt.figure(figsize=(12, 12))
-    #=====================================
-    # Normalize intensity to [0,1]
-    int_min, int_max = df['frequency'].min(), df['frequency'].max()
-    print('min max ', int_min, int_max)
-    #norm = LogNorm(vmin=int_min, vmax=int_max)#, clip=True)
-    eps = 1e-3  # or something small compared to your data
-    norm = LogNorm(vmin=int_min + eps, vmax=int_max + eps, clip=True)
-    #df['int_norm'] = (df['frequency'] - int_min) / (int_max - int_min)
-    df['int_norm'] = norm(df['frequency'])
+    for draw_group in df['damon_draw_group'].unique():
+        tmp_df = df[df['damon_draw_group'] == draw_group]
 
-    # Assign a distinct hue for each region_id in HSV space
-    unique_regions = sorted(df['region_id'].unique())
-    n_regions = len(unique_regions)
-    hue_map = {reg: idx / n_regions for idx, reg in enumerate(unique_regions)}
+        plt.figure(figsize=(12, 12))
+        #=====================================
+        # Normalize intensity to [0,1]
+        int_min, int_max = tmp_df['frequency'].min(), tmp_df['frequency'].max()
+        print('min max ', int_min, int_max)
+        #norm = LogNorm(vmin=int_min, vmax=int_max)#, clip=True)
+        eps = 1e-3  # or something small compared to your data
+        norm = LogNorm(vmin=int_min + eps, vmax=int_max + eps, clip=True)
+        #df['int_norm'] = (df['frequency'] - int_min) / (int_max - int_min)
+        tmp_df['int_norm'] = norm(tmp_df['frequency'])
 
-    # Build RGB colors by combining hue (category) and value (intensity)
-    colors = [
-            #hsv_to_rgb([hue_map[r], 1.0, intensity]) #Uncomment if we want to also show frequency info
-            hsv_to_rgb([hue_map[r], 1.0, 1]) 
-            for r, intensity in zip(df['region_id'], df['int_norm'])
-            ]
+        # Assign a distinct hue for each region_id in HSV space
+        unique_regions = sorted(tmp_df['region_id'].unique())
+        n_regions = len(unique_regions)
+        hue_map = {reg: idx / n_regions for idx, reg in enumerate(unique_regions)}
 
-    # Plot
-    #plt.figure(figsize=(8, 6))
-    plt.scatter(df['time'], df['address'], color=colors, s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
-    #plt.scatter(df['time'], df['address'], s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
-    ax = plt.gca()
+        # Build RGB colors by combining hue (category) and value (intensity)
+        colors = [
+                #hsv_to_rgb([hue_map[r], 1.0, intensity]) #Uncomment if we want to also show frequency info
+                hsv_to_rgb([hue_map[r], 1.0, 1])
+                for r, intensity in zip(tmp_df['region_id'], tmp_df['int_norm'])
+                ]
 
-    # 1) Define a hex‐formatter: takes a float x and returns e.g. '0x1a3f'
-    hex_formatter = FuncFormatter(lambda x, pos: hex(int(x)))
+        # Plot
+        #plt.figure(figsize=(8, 6))
+        plt.scatter(tmp_df['time'], tmp_df['address'], color=colors, s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+        #plt.scatter(df['time'], df['address'], s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+        ax = plt.gca()
 
-    # 2) Install it on the y‐axis
-    ax.yaxis.set_major_formatter(hex_formatter)
-    ax.invert_yaxis()
-    #=====================================
+        # 1) Define a hex‐formatter: takes a float x and returns e.g. '0x1a3f'
+        hex_formatter = FuncFormatter(lambda x, pos: hex(int(x)))
 
-    plt.xlabel("Time (s)")
-    plt.ylabel("Page Frame")
-    plt.title(file)
-    #plt.show()
+        # 2) Install it on the y‐axis
+        ax.yaxis.set_major_formatter(hex_formatter)
+        ax.invert_yaxis()
+        #=====================================
 
-    #print("Saving: ", file_name)
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.xlabel("Time (s)")
+        plt.ylabel("Page Frame")
+        plt.title(file)
+        #plt.show()
+
+        #print("Saving: ", file_name)
+        plt.savefig(output_path + "{}dg_heatmap.png".format(draw_group), dpi=300, bbox_inches="tight")
 
 def generate_pebs_figure(file, output_path):
     df = prepare_pebs_df(file)
@@ -317,7 +356,7 @@ def view(directory, file, pebs=True):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    output_path = os.path.join(output_dir, file_name + "_heatmap.png")
+    output_path = os.path.join(output_dir, file_name) #+ "_heatmap.png")
 
     print("Checking {}".format(output_path))
 
@@ -333,7 +372,7 @@ def view(directory, file, pebs=True):
 def main():
     sns.set(font_scale=2)
 
-    directory = "results_gapbs_auto"
+    directory = "results_gapbs_example"
 
     i = 0
     for filename in os.listdir(directory):
