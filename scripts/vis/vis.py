@@ -324,6 +324,14 @@ def generate_damon_figure(file, output_path):
         plt.savefig(output_path + "_{}dg_heatmap.png".format(draw_group), dpi=300, bbox_inches="tight")
 
 def generate_pebs_figure(file, output_path):
+
+    output_file = output_path + "_heatmap.png"
+    print("Checking {}".format(output_file))
+
+    if os.path.isfile(output_file):
+        print("Skipping {}".format(output_file))
+        return
+
     df = prepare_pebs_df(file)
     plt.figure(figsize=(12, 12))
     sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
@@ -342,7 +350,7 @@ def generate_pebs_figure(file, output_path):
     plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
     plt.title(file + ": PEBS")
-    plt.savefig(output_path + "_heatmap.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
 
 def view(directory, file, pebs=True):
     if pebs:
@@ -389,7 +397,7 @@ def main():
 
             if file_path.endswith('_damon.damon.txt'):
                 isPebs = False
-            elif not file_path.endswith('samples.txt'):
+            elif not file_path.endswith('samples.dat'):
                 continue
 
             view(directory, file_path, isPebs)

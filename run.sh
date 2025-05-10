@@ -105,6 +105,9 @@ sys_init() {
     echo off | sudo tee /sys/devices/system/cpu/smt/control
     # Disable randomized va space
     echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
+    # Drop page cache
+    sync
+    echo 3 | sudo tee /proc/sys/vm/drop_caches
 }
 
 sys_cleanup(){
@@ -181,10 +184,6 @@ main() {
                 ;;
         esac
     done
-
-    if [ -z "$DAMON_AUTO_AGGRS" ]; then
-        echo "Doesnt Exists!"
-    fi
 
     #Check that suite and workload have been provided 
     if [ -z "$SUITE" ] || [ -z "$WORKLOAD" ] || [ -z "$OUTPUT_DIR" ]; then
