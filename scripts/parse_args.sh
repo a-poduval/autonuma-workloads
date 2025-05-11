@@ -1,7 +1,7 @@
 #!/bin/bash
 # Define options and positional arguments
-#ARG_POSITIONAL_SINGLE([suite],[Benchmark suite (e.g. gapbs)])
-#ARG_POSITIONAL_SINGLE([workload],[Name of the workload to run (e.g. pr)])
+#ARG_OPTIONAL_SINGLE([suite],[s],[Benchmark suite (e.g. gapbs)])
+#ARG_OPTIONAL_SINGLE([workload],[w],[Name of the workload to run (e.g. pr)])
 #ARG_OPTIONAL_SINGLE([config_file],[f],[YAML configuration file for workload parameters],[""])
 #ARG_OPTIONAL_SINGLE([output_dir],[o],[Output directory],[""])
 #ARG_OPTIONAL_SINGLE([instrument],[i],[Instrumentation tool: 'pebs', 'damon' (default: none)],["none"])
@@ -15,7 +15,6 @@
 # Argbash is a bash code generator used to get arguments parsing right.
 # Argbash is FREE SOFTWARE, see https://argbash.io for more info
 # Generated online by https://argbash.io/generate
-
 die()
 {
 	local _ret="${2:-1}"
@@ -25,40 +24,43 @@ die()
 }
 
 
+# Function that evaluates whether a value passed to it begins by a character
+# that is a short option of an argument the script knows about.
+# This is required in order to support getopts-like short options grouping.
 begins_with_short_option()
 {
-	local first_option all_short_options='hvfoisanmxy'
+	local first_option all_short_options='bwfoisanmxy'
 	first_option="${1:0:1}"
 	test "$all_short_options" = "${all_short_options/$first_option/}" && return 1 || return 0
 }
 
-# THE DEFAULTS INITIALIZATION - POSITIONALS
-_positionals=()
 # THE DEFAULTS INITIALIZATION - OPTIONALS
+_arg_suite=
+_arg_workload=
 _arg_config_file=""
 _arg_output_dir=""
 _arg_instrument="none"
-_arg_sampling_rate="5000"
-_arg_aggregate_rate="100"
+_arg_sampling_rate=5000
+_arg_aggregate_rate="100ms"
 _arg_min_damon=""
 _arg_max_damon=""
 _arg_auto_access_bp=""
 _arg_auto_aggrs=""
 
 
+# Function that prints general usage of the script.
+# This is useful if users asks for it, or if there is an argument parsing error (unexpected / spurious arguments)
+# and it makes sense to remind the user how the script is supposed to be called.
 print_help()
 {
-	printf '%s\n' "Script to run workloads with various options"
-	printf 'Usage: %s [-h|--help] [-v|--version] [-f|--config_file <arg>] [-o|--output_dir <arg>] [-i|--instrument <arg>] [-s|--sampling_rate <arg>] [-a|--aggregate_rate <arg>] [-n|--min_damon <arg>] [-m|--max_damon <arg>] [-x|--auto_access_bp <arg>] [-y|--auto_aggrs <arg>] <suite> <workload>\n' "$0"
-	printf '\t%s\n' "<suite>: Benchmark suite (e.g. gapbs)"
-	printf '\t%s\n' "<workload>: Name of the workload to run (e.g. pr)"
-	printf '\t%s\n' "-h, --help: Prints help"
-	printf '\t%s\n' "-v, --version: Prints version"
+	printf 'Usage: %s [-b|--suite <arg>] [-w|--workload <arg>] [-f|--config_file <arg>] [-o|--output_dir <arg>] [-i|--instrument <arg>] [-s|--sampling_rate <arg>] [-a|--aggregate_rate <arg>] [-n|--min_damon <arg>] [-m|--max_damon <arg>] [-x|--auto_access_bp <arg>] [-y|--auto_aggrs <arg>]\n' "$0"
+	printf '\t%s\n' "-b, --suite: Benchmark suite (e.g. gapbs) (no default)"
+	printf '\t%s\n' "-w, --workload: Name of the workload to run (e.g. pr) (no default)"
 	printf '\t%s\n' "-f, --config_file: YAML configuration file for workload parameters (default: '""')"
 	printf '\t%s\n' "-o, --output_dir: Output directory (default: '""')"
-	printf '\t%s\n' "-i, --instrument: Instrumentation tool: 'pebs', 'damon' (default: '"none"')"
-	printf '\t%s\n' "-s, --sampling_rate: Damon Sampling Rate (microseconds) (default: '5ms')"
-	printf '\t%s\n' "-a, --aggregate_rate: Damon Aggregate Rate (microseconds) (default: '100ms')"
+	printf '\t%s\n' "-i, --instrument: Instrumentation tool: 'pebs', 'damon' (default: none) (default: '"none"')"
+	printf '\t%s\n' "-s, --sampling_rate: Damon Sampling Rate (microseconds), default: 5000 (default: '5000')"
+	printf '\t%s\n' "-a, --aggregate_rate: Damon Aggregate Rate (milliseconds), default: 100 (default: '100')"
 	printf '\t%s\n' "-n, --min_damon: Min # of Damon regions (default: '""')"
 	printf '\t%s\n' "-m, --max_damon: Max # of Damon regions (default: '""')"
 	printf '\t%s\n' "-x, --auto_access_bp: Damon auto access_bp flag (default: '""')"
@@ -66,160 +68,186 @@ print_help()
 }
 
 
+# The parsing of the command-line
 parse_commandline()
 {
-	_positionals_count=0
 	while test $# -gt 0
 	do
 		_key="$1"
 		case "$_key" in
-			-h|--help)
-				print_help
-				exit 0
+			# We support whitespace as a delimiter between option argument and its value.
+			# Therefore, we expect the --suite or -b value.
+			# so we watch for --suite and -b.
+			# Since we know that we got the long or short option,
+			# we just reach out for the next argument to get the value.
+			-b|--suite)
+				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
+				_arg_suite="$2"
+				shift
 				;;
-			-h*)
-				print_help
-				exit 0
+			# We support the = as a delimiter between option argument and its value.
+			# Therefore, we expect --suite=value, so we watch for --suite=*
+			# For whatever we get, we strip '--suite=' using the ${var##--suite=} notation
+			# to get the argument value
+			--suite=*)
+				_arg_suite="${_key##--suite=}"
 				;;
-			-v|--version)
-				v1.0.0
-				exit 0
+			# We support getopts-style short arguments grouping,
+			# so as -b accepts value, we allow it to be appended to it, so we watch for -b*
+			# and we strip the leading -b from the argument string using the ${var##-b} notation.
+			-b*)
+				_arg_suite="${_key##-b}"
 				;;
-			-v*)
-				v1.0.0
-				exit 0
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
+			-w|--workload)
+				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
+				_arg_workload="$2"
+				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
+			--workload=*)
+				_arg_workload="${_key##--workload=}"
+				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
+			-w*)
+				_arg_workload="${_key##-w}"
+				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-f|--config_file)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_config_file="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--config_file=*)
 				_arg_config_file="${_key##--config_file=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-f*)
 				_arg_config_file="${_key##-f}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-o|--output_dir)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_output_dir="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--output_dir=*)
 				_arg_output_dir="${_key##--output_dir=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-o*)
 				_arg_output_dir="${_key##-o}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-i|--instrument)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_instrument="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--instrument=*)
 				_arg_instrument="${_key##--instrument=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-i*)
 				_arg_instrument="${_key##-i}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-s|--sampling_rate)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_sampling_rate="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--sampling_rate=*)
 				_arg_sampling_rate="${_key##--sampling_rate=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-s*)
 				_arg_sampling_rate="${_key##-s}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-a|--aggregate_rate)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_aggregate_rate="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--aggregate_rate=*)
 				_arg_aggregate_rate="${_key##--aggregate_rate=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-a*)
 				_arg_aggregate_rate="${_key##-a}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-n|--min_damon)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_min_damon="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--min_damon=*)
 				_arg_min_damon="${_key##--min_damon=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-n*)
 				_arg_min_damon="${_key##-n}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-m|--max_damon)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_max_damon="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--max_damon=*)
 				_arg_max_damon="${_key##--max_damon=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-m*)
 				_arg_max_damon="${_key##-m}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-x|--auto_access_bp)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_auto_access_bp="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--auto_access_bp=*)
 				_arg_auto_access_bp="${_key##--auto_access_bp=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-x*)
 				_arg_auto_access_bp="${_key##-x}"
 				;;
+			# See the comment of option '--suite' to see what's going on here - principle is the same.
 			-y|--auto_aggrs)
 				test $# -lt 2 && die "Missing value for the optional argument '$_key'." 1
 				_arg_auto_aggrs="$2"
 				shift
 				;;
+			# See the comment of option '--suite=' to see what's going on here - principle is the same.
 			--auto_aggrs=*)
 				_arg_auto_aggrs="${_key##--auto_aggrs=}"
 				;;
+			# See the comment of option '-b' to see what's going on here - principle is the same.
 			-y*)
 				_arg_auto_aggrs="${_key##-y}"
 				;;
 			*)
-				_last_positional="$1"
-				_positionals+=("$_last_positional")
-				_positionals_count=$((_positionals_count + 1))
+				_PRINT_HELP=yes die "FATAL ERROR: Got an unexpected argument '$1'" 1
 				;;
 		esac
 		shift
 	done
 }
 
-
-handle_passed_args_count()
-{
-	local _required_args_string="'suite' and 'workload'"
-	test "${_positionals_count}" -ge 2 || _PRINT_HELP=yes die "FATAL ERROR: Not enough positional arguments - we require exactly 2 (namely: $_required_args_string), but got only ${_positionals_count}." 1
-	test "${_positionals_count}" -le 2 || _PRINT_HELP=yes die "FATAL ERROR: There were spurious positional arguments --- we expect exactly 2 (namely: $_required_args_string), but got ${_positionals_count} (the last one was: '${_last_positional}')." 1
-}
-
-
-assign_positional_args()
-{
-	local _positional_name _shift_for=$1
-	_positional_names="_arg_suite _arg_workload "
-
-	shift "$_shift_for"
-	for _positional_name in ${_positional_names}
-	do
-		test $# -gt 0 || break
-		eval "$_positional_name=\${1}" || die "Error during argument parsing, possibly an Argbash bug." 1
-		shift
-	done
-}
+# Now call all the functions defined above that are needed to get the job done
+parse_commandline "$@"
 
 print_cmd_args()
 {
@@ -237,5 +265,3 @@ print_cmd_args()
 }
 
 parse_commandline "$@"
-handle_passed_args_count
-assign_positional_args 1 "${_positionals[@]}"

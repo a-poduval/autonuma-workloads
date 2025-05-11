@@ -123,9 +123,9 @@ DAMON_AUTO_AGGRS=""
 
 main() {
 
-    #. ./scripts/parse_args.sh $@
-    #print_cmd_args
-    #exit
+    . ./scripts/parse_args.sh $@
+    print_cmd_args
+
     # Ensure at least one argument (workload) is provided
     if [ "$#" -lt 1 ]; then
         usage
@@ -140,50 +140,22 @@ main() {
     export PATH=$DAMO_PATH:$PATH
 
     WORKLOAD_SCRIPT_PATH=$CUR_PATH/scripts/workloads
-    SAMPLING_RATE=5000
-    AGG_RATE="100ms"
 
-    # Process additional command-line options using getopts
-    while getopts "f:b:w:o:i:s:a:n:m:x:y:" opt; do
-        case ${opt} in
-            f)
-                CONFIG_FILE="$OPTARG"
-                ;;
-            b)
-                SUITE="$OPTARG"
-                ;;
-            w)
-                WORKLOAD="$OPTARG"
-                ;;
-            o)
-                OUTPUT_DIR="$OPTARG"
-                ;;
-            i)
-                INSTRUMENT="$OPTARG"
-                ;;
-            s)
-                SAMPLING_RATE="$OPTARG"
-                ;;
-            a)
-                AGG_RATE="$OPTARG"
-                ;;
-            n)
-                MIN_NUM_DAMO="$OPTARG"
-                ;;
-            m)
-                MAX_NUM_DAMO="$OPTARG"
-                ;;
-            x)
-                DAMON_AUTO_ACCESS_BP="$OPTARG"
-                ;;
-            y)
-                DAMON_AUTO_AGGRS="$OPTARG"
-                ;;
-            *)
-                usage
-                ;;
-        esac
-    done
+    SUITE=$_arg_suite
+    WORKLOAD=$_arg_workload
+    CONFIG_FILE=$_arg_config_file
+    INSTRUMENT=$_arg_instrument
+    OUTPUT_DIR=$_arg_output_dir
+
+    SAMPLING_RATE=$_arg_sampling_rate
+    AGG_RATE=$_arg_aggregate_rate
+
+    MIN_NUM_DAMO=$_arg_min_damon
+    MAX_NUM_DAMO=$_arg_max_damon
+
+    DAMON_AUTO_ACCESS_BP=$_arg_auto_access_bp
+    DAMON_AUTO_AGGRS=$_arg_auto_aggrs
+
 
     #Check that suite and workload have been provided 
     if [ -z "$SUITE" ] || [ -z "$WORKLOAD" ] || [ -z "$OUTPUT_DIR" ]; then
