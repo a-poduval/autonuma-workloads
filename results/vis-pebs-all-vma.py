@@ -138,8 +138,9 @@ def main():
                         isPebs = False
                         view(directory, file_path, isPebs)
                     if file_path.endswith('.dat'):
+                        print(file_path)
                         view(directory, file_path, isPebs)
-        return
+        #return
 
     #view(file)
 

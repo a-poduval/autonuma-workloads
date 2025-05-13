@@ -4,7 +4,7 @@ git submodule init
 git submodule update
 
 sudo apt update
-sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev mpich
+sudo apt install libnuma-dev libpmem-dev libaio-dev libssl-dev mpich libdb++-dev
 
 # PEBS
 cd scripts/PEBS_page_tracking/
