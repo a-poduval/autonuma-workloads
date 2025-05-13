@@ -30,7 +30,7 @@ run_graph500(){
 
 run_strace_graph500(){
     SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        strace -e mmap,munmap -o graph500_xsbench_strace.log $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
+        strace -e trace=memory -o graph500_xsbench_strace.log $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
 }
 
 clean_graph500(){

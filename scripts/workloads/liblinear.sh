@@ -15,7 +15,7 @@ run_liblinear(){
 }
 
 run_strace_liblinear(){
-    strace -e mmap,munmap -o liblinear_liblinear_strace.log $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
+    strace -e trace=memory -o liblinear_liblinear_strace.log $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
 }
 
 clean_liblinear(){

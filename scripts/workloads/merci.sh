@@ -14,7 +14,7 @@ run_merci(){
 }
 
 run_strace_merci(){
-    HOME=$CUR_PATH strace -e mmap,munmap -o merci_merci_strace.log $CUR_PATH/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r $num_reps -c $num_threads
+    HOME=$CUR_PATH strace -e trace=memory -o merci_merci_strace.log $CUR_PATH/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r $num_reps -c $num_threads
 }
 
 clean_merci(){

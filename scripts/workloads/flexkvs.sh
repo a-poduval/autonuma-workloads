@@ -16,7 +16,7 @@ run_flexkvs(){
 }
 
 run_strace_flexkvs(){
-    strace -e mmap,munmap -o flexkvs_flexkvs_strace.log $CUR_PATH/flexkvs/kvsbench -t $num_threads -T $run_time -w $warmup_time -h 0.25 127.0.0.1:1211 -S $kv_size
+    strace -e trace=memory -o flexkvs_flexkvs_strace.log $CUR_PATH/flexkvs/kvsbench -t $num_threads -T $run_time -w $warmup_time -h 0.25 127.0.0.1:1211 -S $kv_size
 }
 
 clean_flexkvs(){

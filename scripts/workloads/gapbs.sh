@@ -35,14 +35,14 @@ run_strace_gapbs(){
 
     if [ $workload == "cc" ] || [ $workload == "cc_sv" ] || [ $workload == "bfs" ] || [ $workload == "tc" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            strace -e trace=memory -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     elif [ $workload == "sssp" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            strace -e trace=memory -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
     else
         #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -i $num_iter -f $graph_path &
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            strace -e trace=memory -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     fi
 
     workload_pid=$!

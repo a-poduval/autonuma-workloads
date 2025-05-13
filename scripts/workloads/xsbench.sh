@@ -17,7 +17,7 @@ run_xsbench(){
 
 run_strace_xsbench(){
     OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        strace -e mmap,munmap -o xsbench_xsbench_strace.log $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+        strace -e trace=memory -o xsbench_xsbench_strace.log $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
 }
 
 clean_xsbench(){
