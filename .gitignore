@@ -39,4 +39,8 @@ gups_hemem/gups-skewed
 gups_hemem/gups-hotset-move
 gups_hemem/gups-random
 
+# Reult dir
 results
+
+# Jupyter Notebook
+.ipynb_checkpoints

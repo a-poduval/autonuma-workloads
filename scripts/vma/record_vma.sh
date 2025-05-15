@@ -1,6 +1,6 @@
 #!/bin/bash
 
-interval=5
+interval=2
 output_file="memory_regions.csv"
 
     #smaps_file ~ /^[0-9a-f]/ {
@@ -16,7 +16,7 @@ record_memory_regions() {
     $1 ~ /^[0-9a-f]/ {
         if (start) {
             if (perm !~ /---p/ && rss_kb != 0) {
-                printf("%s,%d,%s,%s,%s,%s,%d\n", epoch, rno++, start, end, inode, pathname, rss_kb)
+                printf("%s,%d,%s,%s,%s,%s,%d,%d,%d,%d,%d\n", epoch, rno++, start, end, inode, pathname, size, rss_kb, pss_kb, pss_dirty, referenced)
             }
         }
 
@@ -26,18 +26,34 @@ record_memory_regions() {
         perm = $2
         inode = $5
         rss_kb = 0
+        size = 0
+        pss_kb = 0
+        pss_dirty = 0
+        referenced = 0
 
         pathname = ""
         for (i = 6; i <= NF; i++) {
             pathname = pathname (i == 6 ? "" : " ") $i
         }
     }
+    /^Size:/ {
+        size = $2
+    }
     /^Rss:/ {
         rss_kb = $2
     }
+    /^Pss:/ {
+        pss_kb = $2
+    }
+    /^Pss_Dirty:/ {
+        pss_dirty = $2
+    }
+    /^Referenced:/ {
+        referenced = $2
+    }
     END {
         if (start && perm !~ /---p/ && rss_kb != 0) {
-            printf("%s,%d,%s,%s,%s,%s,%d\n", epoch, rno++, start, end, inode, pathname, rss_kb)
+            printf("%s,%d,%s,%s,%s,%s,%d,%d,%d,%d,%d\n", epoch, rno++, start, end, inode, pathname, size, rss_kb, pss_kb, pss_dirty, referenced)
         }
     }
     ' "/proc/$pid/smaps"
@@ -49,7 +65,7 @@ main() {
         exit 1
     fi
 
-    echo "epoch,rno,start,end,inode,pathname,rss_kb" > "$output_file"
+    echo "epoch,rno,start,end,inode,pathname,size,rss_kb,pss_kb,pss_dirty,referenced" > "$output_file"
 
     # Start target program in background
     "$@" &
