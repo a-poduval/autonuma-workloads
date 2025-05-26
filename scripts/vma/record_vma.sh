@@ -70,7 +70,9 @@ main() {
 
     program=$(basename "$1")
 
-    echo "epoch,rno,start,end,inode,pathname,size,rss_kb,pss_kb,pss_dirty,referenced" > "${OUTPUT_DIR}/${program}_${output_file}"
+    output_path="${OUTPUT_DIR}/${program}_${output_file}"
+
+    echo "epoch,rno,start,end,inode,pathname,size,rss_kb,pss_kb,pss_dirty,referenced" > $output_path
 
     # Start target program in background
     "$@" &
@@ -85,11 +87,13 @@ main() {
     while kill -0 "$target_pid" 2>/dev/null; do
         #epoch=$(date +%s)
         if [ -r "/proc/$target_pid/smaps" ]; then
-            record_memory_regions "$target_pid" "$epoch" >> "${OUTPUT_DIR}/${program}_${output_file}"
+            record_memory_regions "$target_pid" "$epoch" >> $output_path
         fi
 	((epoch+=1))
         sleep "$interval"
     done
+
+    python ./scripts/vma/coalesce_smap.py $output_path
 
     #echo "Process $target_pid exited."
 }

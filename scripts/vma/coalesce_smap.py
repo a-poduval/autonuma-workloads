@@ -28,4 +28,4 @@ df['start'] = df['start'].apply(lambda x: hex(x))
 df['end'] = df['end'].apply(lambda x: hex(x))
 
 # Write to a new CSV
-df.to_csv("smap_deduplicated.csv", index=False)
+df.to_csv(file_name.split('.')[0] + "_smap_deduplicated.csv", index=False)
