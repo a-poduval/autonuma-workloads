@@ -21,12 +21,12 @@ run_gapbs(){
             #$CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     elif [ $workload == "sssp" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
-            #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            $CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            #$CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
     else
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
-            #$CUR_PATH/record_vma.sh $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            #$CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     fi
 
     workload_pid=$!
