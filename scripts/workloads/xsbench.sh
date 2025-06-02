@@ -12,7 +12,9 @@ build_xsbench(){
 
 run_xsbench(){
     OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        $CUR_PATH/record_vma.sh $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+        $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+
+    workload_pid=$!
 }
 
 run_strace_xsbench(){

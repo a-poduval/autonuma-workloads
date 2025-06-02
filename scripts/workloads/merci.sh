@@ -10,7 +10,9 @@ build_merci(){
 }
 
 run_merci(){
-    HOME=$CUR_PATH taskset 0xFF $CUR_PATH/record_vma.sh $CUR_PATH/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r $num_reps -c $num_threads
+    HOME=$CUR_PATH taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r $num_reps -c $num_threads &
+
+    workload_pid=$!
 }
 
 run_strace_merci(){
