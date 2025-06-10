@@ -21,7 +21,7 @@ from functools import partial
 
 from matplotlib.colors import LogNorm, hsv_to_rgb
 
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans, DBSCAN, Birch
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
@@ -41,8 +41,14 @@ def apply_cluster(page_stat_df):
     #kmeans.fit(scaled_features)
     #kmeans.fit(pca_df)
     db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
+    #db = DBSCAN(eps=1.0, min_samples=1) # Density based clustering
+
+    #birch = Birch(n_clusters=None, threshold=2).fit(pca_df) # Density based clustering
+    #print(birch.labels_)
+    #db = HDBSCAN(min_cluster_size=2).fit(pca_df) # Density based clustering
     
     #page_stat_df['cluster'] = kmeans.labels_
+    #page_stat_df['cluster'] = birch.labels_
     page_stat_df['cluster'] = db.labels_
     page_stat_df['cluster'] = page_stat_df['cluster'].astype(int)
 
@@ -192,6 +198,8 @@ def process_interval(df, split_vma_df):
     page_stat_df['rno'] = page_stat_df.apply(lambda row: find_region_id(row, split_vma_df), axis=1)
     page_stat_df = page_stat_df.dropna().reset_index(drop=True)
 
+    page_stat_df = page_stat_df[page_stat_df['value_mean'] != 0.0]
+
     if page_stat_df.empty:
         return None
 
@@ -220,8 +228,9 @@ if __name__ == "__main__":
     #pebs_file = '../../results/results_vma_cluster/merci_merci_samples.dat'
 
     base,_ = os.path.splitext(pebs_file)
-    csv_output_file = base + "_cluster.csv"
-    cluster_fig_output_file = base + "_cluster.png"
+    N = 10 # Bin length in seconds
+    csv_output_file = base + "_" + str(N) + "_cluster.csv"
+    cluster_fig_output_file = base + "_" + str(N) + "_cluster.png"
 
     # Read in VMA smap data. Really just used to filter out memory addresses we don't want to examine (libraries etc.)
     vma_df = (pd.read_csv(smap_file))
@@ -274,7 +283,6 @@ if __name__ == "__main__":
     print(split_vma_df)
 
     # Read in pebs data and bin in N second intervals
-    N = 5 
     df = prepare_pebs_df(pebs_file)
     df['time_bin'] = (df['epoch'] // N).astype(int)
     print(df)
@@ -283,54 +291,18 @@ if __name__ == "__main__":
         for bin, group in df.groupby('time_bin')
     }
 
-    # Apply cluster labels for each binned df
+    # Apply cluster labels in parallel for each binned df
     labeled_dfs = []
     i = 0
     print("Applying cluster labels to epochs...")
-    for df in dfs_by_interval.values():
-        print(i, "/", len(dfs_by_interval) - 1)
-        i+=1
+    dfs = list(dfs_by_interval.values())
+    partial_func = partial(process_interval, split_vma_df=split_vma_df)
 
-        time_bin_df = df.copy()
+    with Pool(processes=cpu_count()) as pool:
+        results = pool.map(partial_func, dfs)
 
-        # Stats are uniform for each frame over epoch, drop duplicate page frame entries.
-        duty_df = calculate_duty_cycle(time_bin_df)
-        duty_df = duty_df.drop_duplicates(subset='PageFrame')[['PageFrame', 'duty_cycle', 'duty_cycle_sample_count', 'duty_cycle_percent']]
-
-        streak_df = get_reuse_distance_df(time_bin_df)
-        time_bin_df = time_bin_df.merge(streak_df, on='PageFrame', how='left')
-        
-        page_stat_df = time_bin_df.groupby('PageFrame').agg(
-            {
-                'value': ['mean', 'std', 'min', 'max'],
-                'reuse_distance': ['mean']
-            }
-        )
-
-        # Combine duty cycle info with access statistics
-        page_stat_df.columns = ['_'.join(col) for col in page_stat_df.columns]
-        page_stat_df = page_stat_df.merge(duty_df, on='PageFrame', how='left')
-        page_stat_df = page_stat_df.reset_index(drop=True)
-
-        # Apply region numbers, do this last on smaller aggregated data set because it takes a while.
-        page_stat_df['rno'] = page_stat_df.apply(lambda row: find_region_id(row, split_vma_df), axis=1)
-        page_stat_df = page_stat_df.dropna().reset_index(drop=True)
-        page_stat_df['rno'] = page_stat_df['rno'].astype(int)
-        if page_stat_df.empty:
-            continue
-
-        clustered_df = apply_cluster(page_stat_df.copy())
-
-        time_bin_df = time_bin_df.merge(
-            clustered_df[['PageFrame', 'cluster']].drop_duplicates('PageFrame'),
-            on='PageFrame',
-            how='left'
-        )
-        time_bin_df = time_bin_df.dropna()
-        labeled_dfs.append(time_bin_df)
-
-    print("Labeled DFS==============")
-    #print(labeled_dfs)
+    # Filter out None results
+    labeled_dfs = [df for df in results if df is not None]
 
     print("Generating cluster figure...")
 
@@ -356,7 +328,7 @@ if __name__ == "__main__":
     #plt.show()
     plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
-    plt.title(base + ": Clusters (N = " + N + ")")
+    plt.title(base + ": Clusters (N = " + str(N) + ")")
     plt.savefig(cluster_fig_output_file, dpi=300, bbox_inches="tight")
     final_df.to_csv(csv_output_file)
     #==================================
@@ -379,8 +351,8 @@ if __name__ == "__main__":
         #xmax = df['epoch'].max()
         
         # Draw a horizontal line at y = some_value
-        ymax = time_bin_df1['PageFrame'].max()
-        ymin = time_bin_df1['PageFrame'].min()
+        ymax = final_df['PageFrame'].max()
+        ymin = final_df['PageFrame'].min()
         #plt.hlines(y=ymax, xmin=xmin, xmax=xmax, colors='red', linestyles='dashed')
         #plt.hlines(y=ymin, xmin=xmin, xmax=xmax, colors='red', linestyles='dashed')
 
@@ -402,11 +374,5 @@ if __name__ == "__main__":
         plt.title(file + ": PEBS")
         #plt.show()
         plt.savefig(output_file, dpi=300, bbox_inches="tight")
-
-    time_bin_df1 = time_bin_df.merge(
-        clustered_df[['PageFrame', 'cluster']].drop_duplicates('PageFrame'),
-        on='PageFrame',
-        how='left'
-    )
 
     generate_pebs_figure(pebs_file)
