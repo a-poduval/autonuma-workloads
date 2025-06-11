@@ -28,6 +28,12 @@ from sklearn.decomposition import PCA
 def apply_cluster(page_stat_df):
     scaler = StandardScaler()
     #print(page_stat_df)
+    # Collapsed Clustering===========================
+    #features = page_stat_df.drop(columns=['PageFrame_-1', 'PageFrame', 'PageFrame_1', \
+    #        'rno_-1', 'rno', 'rno_1', 'duty_cycle_sample_count_-1', \
+    #        'duty_cycle_sample_count', 'duty_cycle_sample_count_1', \
+    #        'duty_cycle_-1', 'duty_cycle', 'duty_cycle_1'])
+    # Collapsed Clustering===========================
     features = page_stat_df.drop(columns=['PageFrame', 'rno', 'duty_cycle_sample_count', 'duty_cycle'])
     #print(features)
     scaled_features = scaler.fit_transform(features)
@@ -203,7 +209,28 @@ def process_interval(df, split_vma_df):
     if page_stat_df.empty:
         return None
 
-    page_stat_df['rno'] = page_stat_df['rno'].astype(int)
+    # Collapsed Clustering===========================
+    #page_stat_df = page_stat_df.reset_index(drop=True)
+    ## Shifted versions of the DataFrame
+    #prev = page_stat_df.shift(1).add_suffix('_-1')
+    #curr = page_stat_df.copy()
+    #next_ = page_stat_df.shift(-1).add_suffix('_1')
+
+    ## Concatenate them horizontally
+    #expanded = pd.concat([prev, curr, next_], axis=1)
+
+    ## Drop rows where we don't have full context (optional)
+    ##expanded = expanded.dropna().reset_index(drop=True)
+    #for col in page_stat_df.columns:
+    #    expanded[f'{col}_-1'] = expanded[f'{col}_-1'].fillna(expanded[f'{col}'])
+    #    expanded[f'{col}_1'] = expanded[f'{col}_1'].fillna(expanded[f'{col}'])
+    ##print(expanded)
+    ##assert False
+    #
+    #page_stat_df = expanded
+    # Collapsed Clustering===========================
+
+    #page_stat_df['rno'] = page_stat_df['rno'].astype(int)
     clustered_df = apply_cluster(page_stat_df.copy())
 
     time_bin_df = time_bin_df.merge(
@@ -228,7 +255,7 @@ if __name__ == "__main__":
     #pebs_file = '../../results/results_vma_cluster/merci_merci_samples.dat'
 
     base,_ = os.path.splitext(pebs_file)
-    N = 10 # Bin length in seconds
+    N = 20 # Bin length in seconds
     csv_output_file = base + "_" + str(N) + "_cluster.csv"
     cluster_fig_output_file = base + "_" + str(N) + "_cluster.png"
 
