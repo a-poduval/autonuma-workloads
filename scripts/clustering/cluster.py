@@ -58,11 +58,7 @@ def apply_cluster(page_stat_df):
     page_stat_df['cluster'] = db.labels_
     page_stat_df['cluster'] = page_stat_df['cluster'].astype(int)
 
-    page_stat_df_merged = (pd.concat([page_stat_df, pca_df], axis=1))
-    page_stat_df_merged['start_epoch'] = 0
-
-    # Return new df with cluster labels and pca values
-    return page_stat_df_merged
+    return page_stat_df
 
 def find_region_id(row, df2):
     #print(row)
@@ -234,7 +230,7 @@ def process_interval(df, split_vma_df):
     clustered_df = apply_cluster(page_stat_df.copy())
 
     time_bin_df = time_bin_df.merge(
-        clustered_df[['PageFrame', 'cluster']].drop_duplicates('PageFrame'),
+        clustered_df.drop_duplicates('PageFrame'),
         on='PageFrame',
         how='left'
     )
@@ -320,7 +316,6 @@ if __name__ == "__main__":
 
     # Apply cluster labels in parallel for each binned df
     labeled_dfs = []
-    i = 0
     print("Applying cluster labels to epochs...")
     dfs = list(dfs_by_interval.values())
     partial_func = partial(process_interval, split_vma_df=split_vma_df)
@@ -330,6 +325,10 @@ if __name__ == "__main__":
 
     # Filter out None results
     labeled_dfs = [df for df in results if df is not None]
+    i = 0
+    for df in labeled_dfs:
+        df['cluster_epoch'] = i
+        i+=1
 
     print("Generating cluster figure...")
 
@@ -357,7 +356,7 @@ if __name__ == "__main__":
     plt.ylabel("Page Frame")
     plt.title(base + ": Clusters (N = " + str(N) + ")")
     plt.savefig(cluster_fig_output_file, dpi=300, bbox_inches="tight")
-    final_df.to_csv(csv_output_file)
+    final_df.to_csv(csv_output_file, index=False)
     #==================================
     
     # TODO fix pebs generation
