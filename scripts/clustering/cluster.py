@@ -15,6 +15,7 @@ import argparse
 import time
 import joblib
 from collections import Counter
+from scipy.stats import skew, kurtosis
 
 # Used to accelerate plotting DAMON figures.
 #from concurrent.futures import ProcessPoolExecutor
@@ -28,6 +29,15 @@ from sklearn.cluster import KMeans, DBSCAN, Birch
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA, IncrementalPCA
 
+plt.rcParams.update({'font.size': 22})
+
+def normalized_mad(x):
+    med = np.median(x)
+    if med == 0:
+        return np.nan  # or np.inf, or 0 depending on your logic
+    mad = np.median(np.abs(x - med))
+    return mad / med
+
 def apply_cluster(page_stat_df, birch=None, ipca=None):
     scaler = StandardScaler()
     #print(page_stat_df)
@@ -37,31 +47,26 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
     #        'duty_cycle_sample_count', 'duty_cycle_sample_count_1', \
     #        'duty_cycle_-1', 'duty_cycle', 'duty_cycle_1'])
     # Collapsed Clustering===========================
-    features = page_stat_df.drop(columns=['PageFrame', 'rno', 'duty_cycle_sample_count', 'duty_cycle'])
+    features = page_stat_df.drop(columns=['PageFrame', 'duty_cycle_sample_count', 'duty_cycle'])
     #print(features)
     scaled_features = scaler.fit_transform(features)
 
-    #pca_col = ['pc1', 'pc2']
-
-    #k = 4
-    #kmeans = KMeans(n_clusters=k)
-    #kmeans.fit(scaled_features)
-    #kmeans.fit(pca_df)
-    if not birch and not ipca:
+    if not birch and not ipca: # PCA + DBSCAN
         pca = PCA(n_components=0.95)
         pca_df = pd.DataFrame(pca.fit_transform(scaled_features))#, columns=pca_col)
         db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
         page_stat_df['cluster'] = db.labels_
-    if ipca and not birch:
+    elif ipca and not birch: # IPCA + DBSCAN
         ipca.partial_fit(scaled_features)
         pca_df = ipca.transform(scaled_features)
         db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
         page_stat_df['cluster'] = db.labels_
-    else:
-        ipca.partial_fit(scaled_features)
-        pca_df = ipca.transform(scaled_features)
-        birch.partial_fit(pca_df)
-        page_stat_df['cluster'] = birch.predict(pca_df)
+    else: # BIRCH
+        #ipca.partial_fit(scaled_features)
+        #pca_df = ipca.transform(scaled_features)
+        #print("No IPCA")
+        birch.partial_fit(scaled_features)
+        page_stat_df['cluster'] = birch.predict(scaled_features)
 
     page_stat_df['cluster'] = page_stat_df['cluster'].astype(int)
 
@@ -219,32 +224,37 @@ def process_interval(df, split_vma_df, birch=None, ipca=None):
     d_end = time.time()
     duty_df = duty_df.drop_duplicates(subset='PageFrame')[['PageFrame', 'duty_cycle', 'duty_cycle_sample_count', 'duty_cycle_percent']]
 
-    s_start = time.time()
+    # Reuse distance takes too long to calculate ~28 seconds
+    #s_start = time.time()
     #streak_df = get_reuse_distance_df(time_bin_df)
-    s_end = time.time()
+    #s_end = time.time()
     #time_bin_df = time_bin_df.merge(streak_df, on='PageFrame', how='left')
 
     v_start = time.time()
     page_stat_df = time_bin_df.groupby('PageFrame').agg(
-        {
-            'value': ['mean', 'std', 'min', 'max'],
-            #'reuse_distance': ['mean']
-        }
+            value_min=('value', 'min'),
+            value_max=('value', 'max'),
+            value_mean=('value', 'mean'),
+            value_std=('value', 'std'),
+            # Skew and kurtosis too slow to calculate ~10 seconds
+            #value_skew=('value', lambda x: skew(x, bias=False)),
+            #value_kurtosis=('value', lambda x: kurtosis(x, fisher=True, bias=False)),
+            #value_nmad=('value', normalized_mad),
     )
     v_end = time.time()
     preproc_time1_end = time.time()
     print("preproc1 done : {} s".format(preproc_time1_end - preproc_time1_start))
     print("\td : {} s".format(d_end - d_start))
-    print("\ts : {} s".format(s_end - s_start))
     print("\tv : {} s".format(v_end - v_start))
 
     preproc_time2_start = time.time()
-    page_stat_df.columns = ['_'.join(col) for col in page_stat_df.columns]
+    page_stat_df['var'] = page_stat_df['value_std'] / page_stat_df['value_mean']
     page_stat_df = page_stat_df.merge(duty_df, on='PageFrame', how='left')
     page_stat_df = page_stat_df.reset_index(drop=True)
 
-    page_stat_df['rno'] = page_stat_df.apply(lambda row: find_region_id(row, split_vma_df), axis=1)
-    page_stat_df = page_stat_df.dropna().reset_index(drop=True)
+    #TODO: No longer using split_vma in this func. Not filtering pages until figure gen.
+    #page_stat_df['rno'] = page_stat_df.apply(lambda row: find_region_id(row, split_vma_df), axis=1)
+    #page_stat_df = page_stat_df.dropna().reset_index(drop=True)
 
     page_stat_df = page_stat_df[page_stat_df['value_mean'] != 0.0]
     preproc_time2_end = time.time()
@@ -253,28 +263,6 @@ def process_interval(df, split_vma_df, birch=None, ipca=None):
     if page_stat_df.empty or len(page_stat_df) == 1:
         return None
 
-    # Collapsed Clustering===========================
-    #page_stat_df = page_stat_df.reset_index(drop=True)
-    ## Shifted versions of the DataFrame
-    #prev = page_stat_df.shift(1).add_suffix('_-1')
-    #curr = page_stat_df.copy()
-    #next_ = page_stat_df.shift(-1).add_suffix('_1')
-
-    ## Concatenate them horizontally
-    #expanded = pd.concat([prev, curr, next_], axis=1)
-
-    ## Drop rows where we don't have full context (optional)
-    ##expanded = expanded.dropna().reset_index(drop=True)
-    #for col in page_stat_df.columns:
-    #    expanded[f'{col}_-1'] = expanded[f'{col}_-1'].fillna(expanded[f'{col}'])
-    #    expanded[f'{col}_1'] = expanded[f'{col}_1'].fillna(expanded[f'{col}'])
-    ##print(expanded)
-    ##assert False
-    #
-    #page_stat_df = expanded
-    # Collapsed Clustering===========================
-
-    #page_stat_df['rno'] = page_stat_df['rno'].astype(int)
     cluster_time_start = time.time()
     clustered_df = apply_cluster(page_stat_df.copy(), birch, ipca)
     cluster_time_end = time.time()
@@ -295,13 +283,12 @@ if __name__ == "__main__":
     parser.add_argument("smap_file_path")
     parser.add_argument("pebs_file_path")
     parser.add_argument('--birch', default=False, action='store_true')
+    parser.add_argument('--fig', default=False, action='store_true')
     args = parser.parse_args()
     smap_file = args.smap_file_path
     pebs_file = args.pebs_file_path
     is_birch = args.birch
-
-    #smap_file = '../../results/results_vma_cluster/eval_baseline_memory_regions_smap_deduplicated.csv'
-    #pebs_file = '../../results/results_vma_cluster/merci_merci_samples.dat'
+    is_fig = args.fig
 
     base,_ = os.path.splitext(pebs_file)
     N = 20 # Bin length in seconds
@@ -310,9 +297,8 @@ if __name__ == "__main__":
         csv_output_file = base + "_" + str(N) + "_cluster.csv"
         cluster_fig_output_file = base + "_" + str(N) + "_cluster.png"
     else:
-        csv_output_file = base + "_" + str(N) + "_birch_cluster.csv"
-        cluster_fig_output_file = base + "_" + str(N) + "_birch_cluster.png"
-
+        csv_output_file = base + "_" + str(N) + "_no_pca_birch_cluster.csv"
+        cluster_fig_output_file = base + "_" + str(N) + "_no_pca_birch_cluster.png"
 
     # Read in VMA smap data. Really just used to filter out memory addresses we don't want to examine (libraries etc.)
     vma_df = (pd.read_csv(smap_file))
@@ -326,6 +312,7 @@ if __name__ == "__main__":
     # Get only vma with no pathname (anon region) and a size over 2 MB
     filtered_vma_df = (vma_df[pd.isna(vma_df['pathname']) & (vma_df['size'] >= (1<<21))])
 
+    # Not currently splitting large VMA into sub groups, so this function isn't used.
     def split_large_rows(df, next_rno, size_threshold=(1<<20)):
         new_rows = []
 
@@ -361,8 +348,7 @@ if __name__ == "__main__":
 
         return pd.DataFrame(new_rows)
 
-    split_vma_df = (split_large_rows(filtered_vma_df, next_rno)).reset_index(drop=True)
-    print(split_vma_df)
+    #split_vma_df = (split_large_rows(filtered_vma_df, next_rno)).reset_index(drop=True)
 
     # Read in pebs data and bin in N second intervals
     df = prepare_pebs_df(pebs_file)
@@ -380,7 +366,7 @@ if __name__ == "__main__":
 
     if not is_birch:
         # Parallel
-        partial_func = partial(process_interval, split_vma_df=split_vma_df)
+        partial_func = partial(process_interval, split_vma_df=filtered_vma_df)
         with Pool(processes=cpu_count()) as pool:
             results = pool.map(partial_func, dfs)
     else:
@@ -402,14 +388,15 @@ if __name__ == "__main__":
         results = []
         for df in dfs:
             start = time.time()
-            results.append(process_interval(df, split_vma_df, birch, ipca))
+            results.append(process_interval(df, filtered_vma_df, birch, ipca))
             end = time.time()
             print("{}/{} : {} s".format(i, len(dfs)-1, end-start))
             i+=1
 
         # Save BIRCH and IPCA models
-        joblib.dump(birch, birch_path)
-        joblib.dump(ipca, ipca_path)
+        if not is_fig: # Don't save update when creating figures for consistency
+            joblib.dump(birch, birch_path)
+            joblib.dump(ipca, ipca_path)
 
     # Filter out None results
     labeled_dfs = [df for df in results if df is not None]
@@ -417,8 +404,6 @@ if __name__ == "__main__":
     for df in labeled_dfs:
         df['cluster_epoch'] = i
         i+=1
-
-    print("Generating cluster figure...")
 
     # Show clustered page region map
     final_df = pd.concat(labeled_dfs, ignore_index=True)
@@ -428,8 +413,40 @@ if __name__ == "__main__":
         final_df = final_df[final_df['cluster'] != -1.0]
 
     print(final_df)
+    if not is_fig:
+        exit()
+
+    print("Generating cluster figure...")
+
+    # Save cluster labels for all VMA regions in case we want to look at libraries etc.
+    final_df.to_csv(csv_output_file, index=False)
+
+    print("filtering pages...")
+    filter_s = time.time()
+    # Filter out pages that aren't in the region we want to plot.
+    unique_pages = pd.DataFrame({'PageFrame': final_df['PageFrame'].unique()})
+    unique_pages['rno'] = unique_pages.apply(lambda row: find_region_id(row, filtered_vma_df), axis=1)
+    unique_pages = unique_pages.dropna().reset_index(drop=True)
+
+    final_df = final_df[final_df['PageFrame'].isin(unique_pages['PageFrame'])]
+    filter_e = time.time()
+    print("Done filter {} s".format(filter_e - filter_s))
+
     plt.figure(figsize=(12, 12))
-    plt.scatter(final_df['epoch'], final_df['PageFrame'], c=final_df['cluster'], s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
+
+    # Step 1: Get unique cluster labels and map to a categorical colormap
+    cluster_labels = final_df['cluster'].unique()
+    cluster_labels.sort()  # Optional: consistent ordering
+
+    # Choose a categorical colormap (tab10 = 10 colors, tab20 = 20, etc.)
+    cmap = plt.get_cmap('tab20')  # or 'Set3', 'Accent' if more clusters
+
+    # Create a mapping from cluster label to color
+    color_dict = {label: cmap(i % cmap.N) for i, label in enumerate(cluster_labels)}
+
+    # Apply the color mapping to your DataFrame
+    colors = final_df['cluster'].map(color_dict)
+    plt.scatter(final_df['epoch'], final_df['PageFrame'], c=colors, s=50, edgecolor='none', rasterized=True, alpha=0.7, marker='.')
 
     xmin = final_df['epoch'].min()
     xmax = final_df['epoch'].max()
@@ -446,12 +463,10 @@ if __name__ == "__main__":
     #plt.show()
     plt.xlabel("Time (s)")
     plt.ylabel("Page Frame")
-    plt.title(base + ": Clusters (N = " + str(N) + ")")
+    plt.title(base + ": Clusters. (P = " + str(N) + ")")
     plt.savefig(cluster_fig_output_file, dpi=300, bbox_inches="tight")
-    final_df.to_csv(csv_output_file, index=False)
     #==================================
 
-    # TODO fix pebs generation
     def generate_pebs_figure(file):
         base,_ = os.path.splitext(file)
         output_file = base + "_pebs_heatmap.png"
@@ -462,6 +477,7 @@ if __name__ == "__main__":
             return
 
         df = prepare_pebs_df(file)
+        df = df[df['value'] != 0.0] # Filter out 0 value entries
         plt.figure(figsize=(12, 12))
         #sns.heatmap(df, cmap="viridis", cbar=True, norm=LogNorm())
 
