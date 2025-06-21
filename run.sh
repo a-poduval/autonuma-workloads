@@ -78,8 +78,8 @@ stop_damo() {
 start_pebs() {
     echo "Starting PEBS"
     local output_file="$1"
-    local sampling_period=50
-    local epoch_size=$((500 * 1000))
+    local sampling_period=2000 #Record sample after N events
+    local epoch_size=$((1000 * 1000)) # How often to aggregate samples
 
     # Check if the pipe exists, delete it if it does
     if [ -p "$PEBS_PIPE" ]; then

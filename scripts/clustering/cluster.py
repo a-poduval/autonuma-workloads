@@ -30,6 +30,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA, IncrementalPCA
 
 plt.rcParams.update({'font.size': 22})
+epoch_conversion = 1 # How long each epoch is in seconds
 
 def normalized_mad(x):
     med = np.median(x)
@@ -164,7 +165,7 @@ def prepare_pebs_df(file):
 
     # Optional: Convert column names to a numeric index if desired
     # For plotting purposes, we can remove the 'Epoch_' prefix and convert to int
-    delta_df.columns = [int(col.replace("Epoch_", ""))*0.5 for col in delta_df.columns]
+    delta_df.columns = [int(col.replace("Epoch_", ""))*epoch_conversion for col in delta_df.columns]
 
     # If we want to use plt instead of sns, melt df into long form
     df_long = (
