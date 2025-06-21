@@ -11,7 +11,7 @@ build_liblinear(){
 }
 
 run_liblinear(){
-    taskset 0xFF $CUR_PATH/record_vma.sh $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
+    taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
 }
 
 run_strace_liblinear(){

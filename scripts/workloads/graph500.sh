@@ -25,7 +25,7 @@ build_graph500(){
 
 run_graph500(){
     SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        $CUR_PATH/record_vma.sh $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
+        $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
 }
 
 run_strace_graph500(){

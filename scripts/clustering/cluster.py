@@ -48,7 +48,6 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
     #        'duty_cycle_-1', 'duty_cycle', 'duty_cycle_1'])
     # Collapsed Clustering===========================
     features = page_stat_df.drop(columns=['PageFrame', 'duty_cycle_sample_count', 'duty_cycle'])
-    #print(features)
     scaled_features = scaler.fit_transform(features)
 
     if not birch and not ipca: # PCA + DBSCAN
@@ -248,6 +247,7 @@ def process_interval(df, split_vma_df, birch=None, ipca=None):
     print("\tv : {} s".format(v_end - v_start))
 
     preproc_time2_start = time.time()
+    page_stat_df['value_std'] = page_stat_df['value_std'].fillna(0)
     page_stat_df['var'] = page_stat_df['value_std'] / page_stat_df['value_mean']
     page_stat_df = page_stat_df.merge(duty_df, on='PageFrame', how='left')
     page_stat_df = page_stat_df.reset_index(drop=True)
@@ -283,22 +283,32 @@ if __name__ == "__main__":
     parser.add_argument("smap_file_path")
     parser.add_argument("pebs_file_path")
     parser.add_argument('--birch', default=False, action='store_true')
+    parser.add_argument('--birch_model', type=str, default=None, help='Birch Model to use.')
     parser.add_argument('--fig', default=False, action='store_true')
+
     args = parser.parse_args()
     smap_file = args.smap_file_path
     pebs_file = args.pebs_file_path
+    birch_model = args.birch_model
     is_birch = args.birch
     is_fig = args.fig
 
     base,_ = os.path.splitext(pebs_file)
     N = 20 # Bin length in seconds
+    birch_path='birch_model.joblib'
+    ipca_path='ipca_model.joblib'
+
+    if birch_model:
+        is_birch = True
+        birch_path = birch_model
 
     if not is_birch:
         csv_output_file = base + "_" + str(N) + "_cluster.csv"
         cluster_fig_output_file = base + "_" + str(N) + "_cluster.png"
     else:
-        csv_output_file = base + "_" + str(N) + "_no_pca_birch_cluster.csv"
-        cluster_fig_output_file = base + "_" + str(N) + "_no_pca_birch_cluster.png"
+        birch_name = os.path.splitext(os.path.basename(birch_path))[0]
+        csv_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster.csv"
+        cluster_fig_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster.png"
 
     # Read in VMA smap data. Really just used to filter out memory addresses we don't want to examine (libraries etc.)
     vma_df = (pd.read_csv(smap_file))
@@ -364,6 +374,7 @@ if __name__ == "__main__":
     print("Applying cluster labels to epochs...")
     dfs = list(dfs_by_interval.values())
 
+    cluster_times = []
     if not is_birch:
         # Parallel
         partial_func = partial(process_interval, split_vma_df=filtered_vma_df)
@@ -372,8 +383,6 @@ if __name__ == "__main__":
     else:
         # Iterative online learning with birch
         # Load BIRCH and IPCA models if present, otherwise create
-        birch_path='birch_model.joblib'
-        ipca_path='ipca_model.joblib'
         if os.path.exists(birch_path):
             birch = joblib.load(birch_path)
         else:
@@ -391,6 +400,7 @@ if __name__ == "__main__":
             results.append(process_interval(df, filtered_vma_df, birch, ipca))
             end = time.time()
             print("{}/{} : {} s".format(i, len(dfs)-1, end-start))
+            cluster_times.append(end-start)
             i+=1
 
         # Save BIRCH and IPCA models

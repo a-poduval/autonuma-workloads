@@ -12,7 +12,7 @@ build_flexkvs(){
 }
 
 run_flexkvs(){
-    taskset 0xFF $CUR_PATH/record_vma.sh $CUR_PATH/flexkvs/kvsbench -t $num_threads -T $run_time -w $warmup_time -h 0.25 127.0.0.1:1211 -S $kv_size
+    taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/flexkvs/kvsbench -t $num_threads -T $run_time -w $warmup_time -h 0.25 127.0.0.1:1211 -S $kv_size
 }
 
 run_strace_flexkvs(){
