@@ -78,7 +78,7 @@ stop_damo() {
 start_pebs() {
     echo "Starting PEBS"
     local output_file="$1"
-    local sampling_period=2000 #Record sample after N events
+    local sampling_period=$2 #Record sample after N events
     local epoch_size=$((1000 * 1000)) # How often to aggregate samples
 
     # Check if the pipe exists, delete it if it does
@@ -224,7 +224,7 @@ main() {
             sys_init
 
             echo "Running with PEBS."
-            start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_samples.dat
+            start_pebs ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_samples.dat $SAMPLING_RATE
             # Run command should set $workload_pid variable.
             run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
             #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"

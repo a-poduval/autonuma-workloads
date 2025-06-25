@@ -11,6 +11,8 @@ build_liblinear(){
 }
 
 run_liblinear(){
+    local workload=$1
+    /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
     taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
 }
 

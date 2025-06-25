@@ -59,7 +59,7 @@ print_help()
 	printf '\t%s\n' "-f, --config_file: YAML configuration file for workload parameters (default: '""')"
 	printf '\t%s\n' "-o, --output_dir: Output directory (default: '""')"
 	printf '\t%s\n' "-i, --instrument: Instrumentation tool: 'pebs', 'damon' (default: none) (default: '"none"')"
-	printf '\t%s\n' "-s, --sampling_rate: Damon Sampling Rate (microseconds), default: 5000 (default: '5000')"
+	printf '\t%s\n' "-s, --sampling_rate: Damon Sampling Rate (microseconds) or PEBS event threshold, default: 5000 (default: '5000')"
 	printf '\t%s\n' "-a, --aggregate_rate: Damon Aggregate Rate (milliseconds), default: 100 (default: '100')"
 	printf '\t%s\n' "-n, --min_damon: Min # of Damon regions (default: '""')"
 	printf '\t%s\n' "-m, --max_damon: Max # of Damon regions (default: '""')"

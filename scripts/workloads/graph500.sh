@@ -24,7 +24,10 @@ build_graph500(){
 }
 
 run_graph500(){
-    SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads taskset 0xFF \
+    local workload=$1
+    SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads \
+    /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
+    taskset 0xFF \
         $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
 }
 

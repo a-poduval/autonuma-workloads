@@ -52,14 +52,16 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
     scaled_features = scaler.fit_transform(features)
 
     if not birch and not ipca: # PCA + DBSCAN
-        pca = PCA(n_components=0.95)
-        pca_df = pd.DataFrame(pca.fit_transform(scaled_features))#, columns=pca_col)
-        db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
+        #print("DBSCAN")
+        #pca = PCA(n_components=0.95)
+        #pca_df = pd.DataFrame(pca.fit_transform(scaled_features))#, columns=pca_col)
+        db = DBSCAN(eps=1.0, min_samples=5).fit(scaled_features) # Density based clustering
         page_stat_df['cluster'] = db.labels_
     elif ipca and not birch: # IPCA + DBSCAN
-        ipca.partial_fit(scaled_features)
-        pca_df = ipca.transform(scaled_features)
-        db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
+        #print("IPCA + DBSCAN")
+        #ipca.partial_fit(scaled_features)
+        #pca_df = ipca.transform(scaled_features)
+        db = DBSCAN(eps=1.0, min_samples=5).fit(scaled_features) # Density based clustering
         page_stat_df['cluster'] = db.labels_
     else: # BIRCH
         #ipca.partial_fit(scaled_features)
@@ -215,7 +217,8 @@ def calculate_duty_cycle(df):
     df['duty_cycle_percent'] = (df['duty_cycle'] / len(df['epoch'].unique())*100).astype(int)
     return df
 
-def process_interval(df, split_vma_df, birch=None, ipca=None):
+def process_interval(df, split_vma_df, pebs_rate, birch=None, ipca=None):
+    clustering_time_start = time.time()
     preproc_time1_start = time.time()
     time_bin_df = df.copy()
 
@@ -231,6 +234,7 @@ def process_interval(df, split_vma_df, birch=None, ipca=None):
     #time_bin_df = time_bin_df.merge(streak_df, on='PageFrame', how='left')
 
     v_start = time.time()
+    time_bin_df['value'] = time_bin_df['value'] * pebs_rate # Scale samples by PEBS rate.
     page_stat_df = time_bin_df.groupby('PageFrame').agg(
             value_min=('value', 'min'),
             value_max=('value', 'max'),
@@ -276,7 +280,14 @@ def process_interval(df, split_vma_df, birch=None, ipca=None):
     )
     time_bin_df = time_bin_df.dropna()
 
-    return time_bin_df
+    clustering_time_end = time.time()
+
+    # Return clustered results, timing info, and # of elements clustered
+    return {
+            'result': time_bin_df,
+            'time': clustering_time_end - clustering_time_start,
+            'count': len(time_bin_df)
+    }
 
 if __name__ == "__main__":
 
@@ -285,7 +296,9 @@ if __name__ == "__main__":
     parser.add_argument("pebs_file_path")
     parser.add_argument('--birch', default=False, action='store_true')
     parser.add_argument('--birch_model', type=str, default=None, help='Birch Model to use.')
+    parser.add_argument('--time_bin', type=int, default=20, help='How often to perform clustering (seconds).')
     parser.add_argument('--fig', default=False, action='store_true')
+    parser.add_argument('--pebs_rate', type=int, help='PEBS Sampling Rate')
 
     args = parser.parse_args()
     smap_file = args.smap_file_path
@@ -293,9 +306,10 @@ if __name__ == "__main__":
     birch_model = args.birch_model
     is_birch = args.birch
     is_fig = args.fig
+    pebs_rate = args.pebs_rate
+    N = args.time_bin # Bin length in seconds
 
     base,_ = os.path.splitext(pebs_file)
-    N = 20 # Bin length in seconds
     birch_path='birch_model.joblib'
     ipca_path='ipca_model.joblib'
 
@@ -304,8 +318,8 @@ if __name__ == "__main__":
         birch_path = birch_model
 
     if not is_birch:
-        csv_output_file = base + "_" + str(N) + "_cluster.csv"
-        cluster_fig_output_file = base + "_" + str(N) + "_cluster.png"
+        csv_output_file = base + "_" + str(N) + "_dbscan_cluster.csv"
+        cluster_fig_output_file = base + "_" + str(N) + "_dbscan_cluster.png"
     else:
         birch_name = os.path.splitext(os.path.basename(birch_path))[0]
         csv_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster.csv"
@@ -377,10 +391,14 @@ if __name__ == "__main__":
 
     cluster_times = []
     if not is_birch:
-        # Parallel
-        partial_func = partial(process_interval, split_vma_df=filtered_vma_df)
+        # Parallel DBSCAN clustering (parallel for faster offline clustering)
+        partial_func = partial(process_interval, split_vma_df=filtered_vma_df, pebs_rate=pebs_rate)
         with Pool(processes=cpu_count()) as pool:
-            results = pool.map(partial_func, dfs)
+            pool_results = pool.map(partial_func, dfs)
+
+        pool_results = [r for r in pool_results if r is not None]
+        results = [r['result'] for r in pool_results]
+        cluster_times = [(r['count'], r['time']) for r in pool_results]
     else:
         # Iterative online learning with birch
         # Load BIRCH and IPCA models if present, otherwise create
@@ -397,11 +415,14 @@ if __name__ == "__main__":
         i = 0
         results = []
         for df in dfs:
-            start = time.time()
-            results.append(process_interval(df, filtered_vma_df, birch, ipca))
-            end = time.time()
-            print("{}/{} : {} s".format(i, len(dfs)-1, end-start))
-            cluster_times.append(end-start)
+            result_dict = process_interval(df, filtered_vma_df, pebs_rate, birch, ipca)
+            if result_dict != None:
+                results.append(result_dict['result'])
+                cluster_times.append((result_dict['count'], result_dict['time']))
+                print("{}/{} : {} s".format(i, len(dfs)-1, result_dict['time']))
+            else:
+                print("{}/{} : -----> Returned {}".format(i, len(dfs)-1, result_dict))
+
             i+=1
 
         # Save BIRCH and IPCA models
@@ -424,6 +445,22 @@ if __name__ == "__main__":
         final_df = final_df[final_df['cluster'] != -1.0]
 
     print(final_df)
+
+    # Log Timing info for performance analysis
+    if is_birch:
+        clustering_time_file = "./birch_cluster_time.log"
+    else:
+        clustering_time_file = "./dbscan_cluster_time.log"
+
+    workload_name = os.path.splitext(os.path.basename(pebs_file))[0]
+    with open(clustering_time_file, 'a') as f:
+        f.write(workload_name + "\n")
+        f.write(str(N) + "\n")
+        f.write(str(pebs_rate) + "\n")
+        for entry in cluster_times:
+            f.write(str(entry[0]) + "," + str(entry[1]) + "\n")
+        f.write("---\n")
+
     if not is_fig:
         exit()
 
