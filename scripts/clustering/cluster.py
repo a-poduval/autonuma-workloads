@@ -14,6 +14,8 @@ import re
 import argparse
 import time
 import joblib
+import tracemalloc
+import gc
 from collections import Counter
 from scipy.stats import skew, kurtosis
 
@@ -298,6 +300,7 @@ if __name__ == "__main__":
     parser.add_argument('--birch_model', type=str, default=None, help='Birch Model to use.')
     parser.add_argument('--time_bin', type=int, default=20, help='How often to perform clustering (seconds).')
     parser.add_argument('--fig', default=False, action='store_true')
+    parser.add_argument('--mem_prof', default=False, action='store_true', help='Collect memory usage stats. (Slows execution)')
     parser.add_argument('--pebs_rate', type=int, help='PEBS Sampling Rate')
 
     args = parser.parse_args()
@@ -306,6 +309,7 @@ if __name__ == "__main__":
     birch_model = args.birch_model
     is_birch = args.birch
     is_fig = args.fig
+    mem_prof = args.mem_prof
     pebs_rate = args.pebs_rate
     N = args.time_bin # Bin length in seconds
 
@@ -390,7 +394,8 @@ if __name__ == "__main__":
     dfs = list(dfs_by_interval.values())
 
     cluster_times = []
-    if not is_birch:
+    cluster_mem = []
+    if not is_birch and not mem_prof:
         # Parallel DBSCAN clustering (parallel for faster offline clustering)
         partial_func = partial(process_interval, split_vma_df=filtered_vma_df, pebs_rate=pebs_rate)
         with Pool(processes=cpu_count()) as pool:
@@ -402,23 +407,40 @@ if __name__ == "__main__":
     else:
         # Iterative online learning with birch
         # Load BIRCH and IPCA models if present, otherwise create
-        if os.path.exists(birch_path):
-            birch = joblib.load(birch_path)
-        else:
-            birch = Birch(n_clusters=None, threshold=1)
-        if os.path.exists(ipca_path):
-            ipca = joblib.load(ipca_path)
-        else:
-            ipca = IncrementalPCA(n_components=2)
+        birch = None
+        ipca = None
+        if is_birch:
+            if os.path.exists(birch_path):
+                birch = joblib.load(birch_path)
+            else:
+                birch = Birch(n_clusters=None, threshold=1)
+            if os.path.exists(ipca_path):
+                ipca = joblib.load(ipca_path)
+            else:
+                ipca = IncrementalPCA(n_components=2)
 
         # Begin iterative online clustering
         i = 0
         results = []
         for df in dfs:
+            if mem_prof: # Start memory tracing
+                tracemalloc.start()
+
             result_dict = process_interval(df, filtered_vma_df, pebs_rate, birch, ipca)
+
+            if mem_prof: # Collect memory stat (in B) and cleanup
+                current, peak = tracemalloc.get_traced_memory()
+                #print(f"Current: {current / 1024:.1f} KB; Peak: {peak / 1024:.1f} KB")
+                tracemalloc.stop()
+                gc.collect()
+
             if result_dict != None:
                 results.append(result_dict['result'])
                 cluster_times.append((result_dict['count'], result_dict['time']))
+
+                if mem_prof:
+                    cluster_mem.append((result_dict['count'], peak))
+
                 print("{}/{} : {} s".format(i, len(dfs)-1, result_dict['time']))
             else:
                 print("{}/{} : -----> Returned {}".format(i, len(dfs)-1, result_dict))
@@ -446,20 +468,36 @@ if __name__ == "__main__":
 
     print(final_df)
 
-    # Log Timing info for performance analysis
-    if is_birch:
-        clustering_time_file = "./birch_cluster_time.log"
-    else:
-        clustering_time_file = "./dbscan_cluster_time.log"
+    if not mem_prof:
+        # Log Timing info for performance analysis
+        if is_birch:
+            clustering_time_file = "./birch_cluster_time.log"
+        else:
+            clustering_time_file = "./dbscan_cluster_time.log"
 
-    workload_name = os.path.splitext(os.path.basename(pebs_file))[0]
-    with open(clustering_time_file, 'a') as f:
-        f.write(workload_name + "\n")
-        f.write(str(N) + "\n")
-        f.write(str(pebs_rate) + "\n")
-        for entry in cluster_times:
-            f.write(str(entry[0]) + "," + str(entry[1]) + "\n")
-        f.write("---\n")
+        workload_name = os.path.splitext(os.path.basename(pebs_file))[0]
+        with open(clustering_time_file, 'a') as f:
+            f.write(workload_name + "\n")
+            f.write(str(N) + "\n")
+            f.write(str(pebs_rate) + "\n")
+            for entry in cluster_times:
+                f.write(str(entry[0]) + "," + str(entry[1]) + "\n")
+            f.write("---\n")
+    else:
+        # Log Memory Usage info for performance analysis
+        if is_birch:
+            clustering_time_file = "./birch_cluster_memory.log"
+        else:
+            clustering_time_file = "./dbscan_cluster_memory.log"
+
+        workload_name = os.path.splitext(os.path.basename(pebs_file))[0]
+        with open(clustering_time_file, 'a') as f:
+            f.write(workload_name + "\n")
+            f.write(str(N) + "\n")
+            f.write(str(pebs_rate) + "\n")
+            for entry in cluster_mem:
+                f.write(str(entry[0]) + "," + str(entry[1]) + "\n")
+            f.write("---\n")
 
     if not is_fig:
         exit()
