@@ -34,6 +34,8 @@ cd ../..
 
 # liblinear
 cd liblinear-2.47
+wget https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/kddb.bz2
+bunzip2 kddb.bz2
 wget https://www.csie.ntu.edu.tw/~cjlin/libsvmtools/datasets/binary/kdd12.xz
 unxz kdd12.xz
 rm kdd12.xz
