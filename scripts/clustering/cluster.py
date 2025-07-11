@@ -35,6 +35,7 @@ from sklearn.decomposition import PCA, IncrementalPCA
 plt.rcParams.update({'font.size': 22})
 epoch_conversion = 1 # How long each epoch is in seconds
 feature_filter = ['PageFrame', 'duty_cycle_sample_count', 'duty_cycle', 'label', 'workload', 'cluster']
+#feature_filter = ['PageFrame', 'value_mean', 'value_std', 'duty_cycle_sample_count', 'duty_cycle', 'label', 'workload', 'cluster']
 
 def normalized_mad(x):
     med = np.median(x)
@@ -43,7 +44,7 @@ def normalized_mad(x):
     mad = np.median(np.abs(x - med))
     return mad / med
 
-def apply_cluster(page_stat_df, birch=None, ipca=None):
+def apply_cluster(page_stat_df, birch=None, ipca=None, group_size=1):
     scaler = StandardScaler()
     #print(page_stat_df)
     # Collapsed Clustering===========================
@@ -54,7 +55,6 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
     # Collapsed Clustering===========================
     features = page_stat_df.drop(columns=feature_filter, errors='ignore')
 
-    group_size = 16
     num_full_groups = len(features) // group_size
     leftover = len(features) % group_size
 
@@ -86,6 +86,22 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
     #scaled_features = scaler.fit_transform(features)
     #print(X)
 
+    # Simple check per page=================
+    #threshold = 10
+    #diff = np.abs(page_stat_df['duty_cycle_percent_first_half'] - page_stat_df['duty_cycle_percent_second_half'])
+    #print("Diff")
+    #print(diff)
+    #page_stat_df['label'] = np.where((diff > threshold) & (page_stat_df['duty_cycle_percent'] < 25), 'sequential', 'random')
+
+    #page_stat_df['label'] = page_stat_df['duty_cycle_percent'].apply(
+    #    lambda x: 'sequential' if x < 25 else 'random'
+    #)
+    ##print(page_stat_df['duty_cycle_percent'])
+    #page_stat_df['cluster'] = -1
+    #return page_stat_df
+    # Simple check per page=================
+
+
     if not birch and not ipca: # PCA + DBSCAN
         #print("DBSCAN")
         #pca = PCA(n_components=0.95)
@@ -94,9 +110,9 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
         page_stat_df['cluster'] = db.labels_
     elif ipca and not birch: # IPCA + DBSCAN
         #print("IPCA + DBSCAN")
-        #ipca.partial_fit(scaled_features)
-        #pca_df = ipca.transform(scaled_features)
-        db = DBSCAN(eps=1.0, min_samples=5).fit(scaled_features) # Density based clustering
+        ipca.partial_fit(scaled_features)
+        pca_df = ipca.transform(scaled_features)
+        db = DBSCAN(eps=1.0, min_samples=5).fit(pca_df) # Density based clustering
         page_stat_df['cluster'] = db.labels_
     else: # BIRCH
         ipca.partial_fit(scaled_features)
@@ -146,6 +162,18 @@ def apply_cluster(page_stat_df, birch=None, ipca=None):
 
         index_to_update = group.index[:last_boundary+1]
         page_stat_df.loc[index_to_update, 'cluster'] = majority_cluster
+
+    #for cluster, group in page_stat_df.groupby('cluster'):
+    #    print(cluster, '============')
+    #    print(group)
+
+    # Step 1: Compute average x per label
+    avg_dc = page_stat_df.groupby('cluster')['duty_cycle_percent'].mean()
+    #print("Average DC:----------------")
+    #print(avg_dc)
+
+    # Step 2: Map condition to new values
+    page_stat_df['label'] = page_stat_df['cluster'].map(lambda lbl: 'sequential' if avg_dc[lbl] < 25 else 'random')
 
     return page_stat_df
 
@@ -293,7 +321,7 @@ def calculate_duty_cycle(df):
 
     return df
 
-def process_interval(df, split_vma_df, pebs_rate, birch=None, ipca=None):
+def process_interval(df, split_vma_df, pebs_rate, birch=None, ipca=None, group_size=1):
     clustering_time_start = time.time()
     preproc_time1_start = time.time()
     time_bin_df = df.copy()
@@ -346,7 +374,7 @@ def process_interval(df, split_vma_df, pebs_rate, birch=None, ipca=None):
         return None
 
     cluster_time_start = time.time()
-    clustered_df = apply_cluster(page_stat_df.copy(), birch, ipca)
+    clustered_df = apply_cluster(page_stat_df.copy(), birch, ipca, group_size)
     cluster_time_end = time.time()
     print("Cluster done : {} s", cluster_time_end - cluster_time_start)
     if clustered_df is None:
@@ -367,7 +395,6 @@ def process_interval(df, split_vma_df, pebs_rate, birch=None, ipca=None):
             'time': clustering_time_end - clustering_time_start,
             'count': len(time_bin_df)
     }
-
 
 # Pulls data from ./labeled
 def get_labeled_data(N, birch):
@@ -397,7 +424,6 @@ def get_labeled_data(N, birch):
                     #value_kurtosis=('value', lambda x: kurtosis(x, fisher=True, bias=False)),
             )
 
-
             page_stat_df['value_std'] = page_stat_df['value_std'].fillna(0)
             page_stat_df['var'] = page_stat_df['value_std'] / page_stat_df['value_mean']
             page_stat_df = page_stat_df.merge(duty_df, on='PageFrame', how='left')
@@ -419,14 +445,11 @@ def get_labeled_data(N, birch):
             page_stat_df = page_stat_df[page_stat_df['value_mean'] != 0.0]
             prepped_dfs.append(page_stat_df)
 
-
             #print(majority_labels)
         labeled_df = pd.concat(prepped_dfs, ignore_index=True)
         labeled_df = labeled_df[labeled_df['label'] != 'unlabeled']
 
         return labeled_df
-
-
 
     starting_dfs = []
     merci_df = pd.read_csv('./labeled/merci_20k.csv', index_col=0).reset_index(drop=True)
@@ -585,6 +608,7 @@ if __name__ == "__main__":
     parser.add_argument('--birch', default=False, action='store_true')
     parser.add_argument('--birch_model', type=str, default=None, help='Birch Model to use.')
     parser.add_argument('--time_bin', type=int, default=20, help='How often to perform clustering (seconds).')
+    parser.add_argument('--group_size', type=int, default=1, help='Number of rows to flatten.')
     parser.add_argument('--fig', default=False, action='store_true')
     parser.add_argument('--mem_prof', default=False, action='store_true', help='Collect memory usage stats. (Slows execution)')
     parser.add_argument('--pebs_rate', type=int, help='PEBS Sampling Rate')
@@ -597,6 +621,7 @@ if __name__ == "__main__":
     is_fig = args.fig
     mem_prof = args.mem_prof
     pebs_rate = args.pebs_rate
+    group_size = args.group_size
     N = args.time_bin # Bin length in seconds
 
     base,_ = os.path.splitext(pebs_file)
@@ -610,11 +635,12 @@ if __name__ == "__main__":
     if not is_birch:
         csv_output_file = base + "_" + str(N) + "_dbscan_cluster.csv"
         cluster_fig_output_file = base + "_" + str(N) + "_dbscan_cluster.png"
+        label_fig_output_file = base + "_" + str(N) + "_dbscan_cluster_label.png"
     else:
         birch_name = os.path.splitext(os.path.basename(birch_path))[0]
-        csv_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster.csv"
-        cluster_fig_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster.png"
-        label_fig_output_file = base + "_" + str(N) + "_" + birch_name + "_no_pca_birch_cluster_label.png"
+        csv_output_file = base + "_" + str(N) + "_" + birch_name + "_" + str(group_size) + "_gs_" + "_no_pca_birch_cluster.csv"
+        cluster_fig_output_file = base + "_" + str(N) + "_" + birch_name + "_" + str(group_size) + "_gs_" + "_no_pca_birch_cluster.png"
+        label_fig_output_file = base + "_" + str(N) + "_" + birch_name + "_" + str(group_size) + "_gs_" + "_no_pca_birch_cluster_label.png"
 
     # Read in VMA smap data. Really just used to filter out memory addresses we don't want to examine (libraries etc.)
     vma_df = (pd.read_csv(smap_file))
@@ -700,8 +726,8 @@ if __name__ == "__main__":
             if os.path.exists(birch_path):
                 birch = joblib.load(birch_path)
             else:
-                #birch = Birch(n_clusters=None, threshold=1)
-                birch = Birch(n_clusters=DBSCAN(eps=1.0), threshold=1)
+                birch = Birch(n_clusters=None, threshold=1.5)
+                #birch = Birch(n_clusters=DBSCAN(eps=1.8), threshold=1)
                 #birch = Birch(n_clusters=DBSCAN(eps=1.0, min_samples=5), threshold=1)
 
                 #birch = Birch(n_clusters=None, threshold=1)
@@ -720,7 +746,7 @@ if __name__ == "__main__":
             if mem_prof: # Start memory tracing
                 tracemalloc.start()
 
-            result_dict = process_interval(df, filtered_vma_df, pebs_rate, birch, ipca)
+            result_dict = process_interval(df, filtered_vma_df, pebs_rate, birch, ipca, group_size)
 
             if mem_prof: # Collect memory stat (in B) and cleanup
                 current, peak = tracemalloc.get_traced_memory()
@@ -815,7 +841,7 @@ if __name__ == "__main__":
     #final_df = final_df.merge(cluster_map, on='cluster', how='left')
 
     save_cluster_fig(cluster_fig_output_file, final_df, 'cluster')
-    #save_cluster_fig(label_fig_output_file, final_df, 'label')
+    save_cluster_fig(label_fig_output_file, final_df, 'label')
 
     def generate_pebs_figure(file):
         base,_ = os.path.splitext(file)
