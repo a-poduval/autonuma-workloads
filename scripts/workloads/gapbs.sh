@@ -4,6 +4,7 @@ config_gapbs(){
     num_threads=8
     num_rep=5
     num_iter=5
+    graph_size=27
     graph_path=$CUR_PATH/gapbs/benchmark/graphs/twitterU.sg
     w_graph_path=$CUR_PATH/gapbs/benchmark/graphs/twitter.wsg
 }
@@ -16,20 +17,34 @@ run_gapbs(){
     local workload=$1
 
     if [ $workload == "cc" ] || [ $workload == "cc_sv" ] || [ $workload == "bfs" ] || [ $workload == "tc" ]; then
-        OMP_NUM_THREADS=$num_threads \
-            /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
-            taskset 0xFF \
-            $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+        /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+            numactl --cpunodebind=0 --membind=0 \
+            sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+            OMP_NUM_THREADS=$num_threads \
+            $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size \
+            1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+            2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+            #$CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
             #$CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     elif [ $workload == "sssp" ]; then
-        OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
-            $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+        /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+            numactl --cpunodebind=0 --membind=0 \
+            sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+            OMP_NUM_THREADS=$num_threads \
+            $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size \
+            1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+            2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+            #$CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
             #$CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
     else
-        OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
-            $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+        /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+            numactl --cpunodebind=0 --membind=0 \
+            sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+            OMP_NUM_THREADS=$num_threads \
+            $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size \
+            1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+            2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+            #$CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
             #$CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     fi
 
@@ -41,13 +56,16 @@ run_strace_gapbs(){
 
     if [ $workload == "cc" ] || [ $workload == "cc_sv" ] || [ $workload == "bfs" ] || [ $workload == "tc" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size &
+            #strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     elif [ $workload == "sssp" ]; then
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
+            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size &
+            #strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $w_graph_path &
     else
         OMP_NUM_THREADS=$num_threads taskset 0xFF \
-            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
+            strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -g $graph_size &
+            #strace -e mmap,munmap -o gapbs_$1_strace.log $CUR_PATH/gapbs/$1 -n $num_rep -f $graph_path &
     fi
 
     workload_pid=$!

@@ -42,5 +42,13 @@ gups_hemem/gups-random
 # Reult dir
 results
 
+# Run artifacts
+*.model
+*.log
+liblinear-2.47/kdd12
+liblinear-2.47/predict
+liblinear-2.47/train
+MERCI/data
+
 # Jupyter Notebook
 .ipynb_checkpoints

@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 config_xsbench(){
     num_threads=8
@@ -11,8 +11,13 @@ build_xsbench(){
 }
 
 run_xsbench(){
-    OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+    /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+        numactl --cpunodebind=0 --membind=0 \
+        sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+        OMP_NUM_THREADS=$num_threads \
+        $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints \
+        1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+        2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
 
     workload_pid=$!
 }

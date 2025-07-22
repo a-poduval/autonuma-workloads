@@ -2,17 +2,24 @@
 
 config_silo(){
     benchmark=tpcc
-    sf=100
-    ops=1000000
+    sf=200
+    ops=2000000
     num_threads=8
 }
 
 build_silo(){
-    (cd $CUR_PATH/MERCI/4_performance_evaluation && make -j$(nproc))
+    (cd $CUR_PATH/MERCI/4_performance_evaluation && MODE=perf make -j dbtest)
 }
 
 run_silo(){
-    taskset 0xFF $CUR_PATH/record_vma.sh $CUR_PATH/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench $benchmark --scale-factor $sf --ops-per-worker $ops --num-threads $num_threads
+    /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+        numactl --cpunodebind=0 --membind=0 \
+        sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+        $CUR_PATH/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench $benchmark --scale-factor $sf --ops-per-worker $ops --num-threads $num_threads \
+        1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+        2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+    #taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench $benchmark --scale-factor $sf --ops-per-worker $ops --num-threads $num_threads &
+    workload_pid=$!
 }
 
 run_strace_silo(){

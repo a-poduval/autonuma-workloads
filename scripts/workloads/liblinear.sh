@@ -12,8 +12,14 @@ build_liblinear(){
 
 run_liblinear(){
     local workload=$1
-    /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
-    taskset 0xFF $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset
+    /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+        numactl --cpunodebind=0 --membind=0 \
+        sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+        $CUR_PATH/liblinear-2.47/train -s 6 -m $num_threads $dataset \
+        1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+        2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+        #$CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR \
+    workload_pid=$!
 }
 
 run_strace_liblinear(){

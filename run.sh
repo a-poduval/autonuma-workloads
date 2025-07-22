@@ -101,8 +101,8 @@ stop_pebs() {
 }
 
 sys_init() {
-    # Disable SMT
-    echo off | sudo tee /sys/devices/system/cpu/smt/control
+    # Disable SMT # TODO: No longer disabling as Hemem needs it, separate out into a separate config
+    #echo off | sudo tee /sys/devices/system/cpu/smt/control
     # Disable randomized va space
     echo 0 | sudo tee /proc/sys/kernel/randomize_va_space
     # Drop page cache
@@ -113,8 +113,17 @@ sys_init() {
 sys_cleanup(){
     # Re-enable randomized va space
     echo 2 | sudo tee /proc/sys/kernel/randomize_va_space
-    # Re-enable SMT
-    echo on | sudo tee /sys/devices/system/cpu/smt/control
+    # Re-enable SMT # TODO: No longer disabling as Hemem needs it, separate out into a separate config
+    #echo on | sudo tee /sys/devices/system/cpu/smt/control
+}
+
+extract_policy() {
+    local path="$1"
+    case $(basename "$path") in
+        libhemem.so) echo "libhemem" ;;
+        libhemem-lru.so) echo "libhemem-lru" ;;
+        *) echo "unknown" ;;
+    esac
 }
 
 # DAMON Auto tune params
@@ -157,7 +166,7 @@ main() {
     DAMON_AUTO_AGGRS=$_arg_auto_aggrs
 
 
-    #Check that suite and workload have been provided 
+    #Check that suite and workload have been provided
     if [ -z "$SUITE" ] || [ -z "$WORKLOAD" ] || [ -z "$OUTPUT_DIR" ]; then
         usage
     fi
@@ -181,6 +190,8 @@ main() {
             exit 1
         fi
     fi
+
+    hemem_policy=$(extract_policy "$HEMEMPOL")
 
     # Source the workload script.
     source "${SUITE_SCRIPT}"
@@ -262,14 +273,15 @@ main() {
                 else
                     DAMO_FILE=${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${SAMPLING_RATE}_${AGG_RATE}_${MIN_NUM_DAMO}r_${MAX_NUM_DAMO}r_${DAMON_AUTO_ACCESS_BP}bp_${DAMON_AUTO_AGGRS}agg_damon.dat
                 fi
-                # Run command should set $workload_pid variable.
+                # Run command should set $workload_pid variable. # TODO: Support case when not using Hemem again
+                /usr/bin/time -v -o ${OUTPUT_DIR}/${WORKLOAD}_${policy}_time.txt \
                 run_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 #run_strace_${SUITE} ${WORKLOAD} #"${CONFIG_FILE}"
                 start_damo_autotune ${DAMO_FILE} $workload_pid $SAMPLING_RATE $AGG_RATE $MIN_NUM_DAMO $MAX_NUM_DAMO
             fi
 
             tail --pid=$workload_pid -f /dev/null
-            stop_damo ${DAMO_FILE} 
+            stop_damo ${DAMO_FILE}
 
             sys_cleanup
             ;;

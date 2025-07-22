@@ -12,7 +12,7 @@ build_graph500(){
     git checkout master
 
     cp make-incs/make.inc-gcc make.inc
-    
+
     #Change makefile gcc version and enable openmp
     sed -i -e 's/^CC = gcc-4.6/CC = gcc/' \
         -e 's/^# \(BUILD_OPENMP = Yes\)/\1/' \
@@ -25,10 +25,14 @@ build_graph500(){
 
 run_graph500(){
     local workload=$1
-    SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads \
-    /usr/bin/time -v -o ${OUTPUT_DIR}/${workload}_time.txt \
-    taskset 0xFF \
-        $CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V
+    /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
+        numactl --cpunodebind=0 --membind=0 \
+        sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
+        SKIP_VALIDATION=$skip_validation OMP_NUM_THREADS=$num_threads \
+        $CUR_PATH/graph500/omp-csr/omp-csr -s $size -V \
+        1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
+        2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
+    workload_pid=$!
 }
 
 run_strace_graph500(){
