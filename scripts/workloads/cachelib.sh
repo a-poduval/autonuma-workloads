@@ -39,6 +39,6 @@ run_strace_cachelib(){
 }
 
 clean_cachelib(){
-    rm logs.txt stats.txt times.txt
+    rm -f logs.txt stats.txt times.txt
     return
 }
