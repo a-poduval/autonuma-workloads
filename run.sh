@@ -122,6 +122,7 @@ extract_policy() {
     case $(basename "$path") in
         libhemem.so) echo "libhemem" ;;
         libhemem-lru.so) echo "libhemem-lru" ;;
+        libhemem-baseline.so) echo "libhemem-baseline" ;;
         *) echo "unknown" ;;
     esac
 }

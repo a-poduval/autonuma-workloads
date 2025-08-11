@@ -34,3 +34,6 @@
 [submodule "scripts/damo"]
 	path = scripts/damo
 	url = https://github.com/damonitor/damo.git
+[submodule "CacheLib"]
+	path = CacheLib
+	url = https://github.com/hcoffey1/CacheLib.git
