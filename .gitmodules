@@ -37,3 +37,9 @@
 [submodule "CacheLib"]
 	path = CacheLib
 	url = https://github.com/hcoffey1/CacheLib.git
+[submodule "scripts/cipp-workspace"]
+	path = scripts/cipp-workspace
+	url = https://github.com/BijanT/cipp-workspace.git
+[submodule "CloverLeaf"]
+	path = CloverLeaf
+	url = https://github.com/UK-MAC/CloverLeaf.git

@@ -1,32 +1,36 @@
 #!/bin/bash
 
-config_xsbench(){
+config_cloverleaf(){
+    WORK_DIR=$CUR_PATH/CloverLeaf/CloverLeaf_OpenMP/
     num_threads=16
-    particles=20000000 # Should take about 64G
-    gridpoints=130000
+    cp $WORK_DIR/InputDecks/clover_bm16_short.in ./clover.in
 }
 
-build_xsbench(){
-    (cd $CUR_PATH/XSBench/openmp-threading && make -j$(nproc))
+build_cloverleaf(){
+    pushd $WORK_DIR
+
+    make COMPILER=GNU -j $(nproc)
+
+    popd
 }
 
-run_xsbench(){
+run_cloverleaf(){
+    local workload=$1
     /usr/bin/time -v -o "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_time.txt" \
         numactl --cpunodebind=0 --membind=0 \
         sudo LD_PRELOAD=$HEMEMPOL DRAMSIZE=$DRAMSIZE MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE \
         OMP_NUM_THREADS=$num_threads \
-        $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints \
+        $WORK_DIR/clover_leaf \
         1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
         2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
-
     workload_pid=$!
 }
 
-run_strace_xsbench(){
-    OMP_NUM_THREADS=$num_threads taskset 0xFF \
-        strace -e mmap,munmap -o xsbench_xsbench_strace.log $CUR_PATH/XSBench/openmp-threading/XSBench -t $num_threads -p $particles -g $gridpoints
+run_strace_cloverleaf(){
+    return
 }
 
-clean_xsbench(){
+clean_cloverleaf(){
+    rm -f clover.in times.txt logs.txt stats.txt clover.in.tmp clover.out
     return
 }
