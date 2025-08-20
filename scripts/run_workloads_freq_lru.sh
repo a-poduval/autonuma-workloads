@@ -5,9 +5,9 @@
 #HEMEM_POL=(/mydata/hemem/src/libhemem.so)
 #MIN_INTERPOSE_MEM_SIZE=33554432
 MIN_INTERPOSE_MEM_SIZE=67108864
-DRAM_SIZES=(2147483648 4294967296 8589934592 17179869184 34359738368)
-HEMEM_POL=(/mydata/hemem/src/libhemem.so /mydata/hemem/src/libhemem-lru.so)
-N=5
+DRAM_SIZES=(2147483648)
+HEMEM_POL=(/mydata/hemem/src/libhemem.so /mydata/hemem/src/libhemem-lru.so /mydata/hemem/src/libhemem-baseline.so)
+N=0
 for i in $(seq 1 $N); do
     for size in "${DRAM_SIZES[@]}"; do
         for pol in "${HEMEM_POL[@]}"; do
@@ -47,12 +47,21 @@ for i in $(seq 1 $N); do
     done
 done
 
-N=3
+cloverleaf_peak=$((9154748*1024))
+
+liblinear_peak=$((74121965774)) #~69 GB?
+DRAM_SIZES=(0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.1 1)
+N=15
+HEMEM_POL=(/mydata/hemem/src/libhemem.so /mydata/hemem/src/libhemem-lru.so /mydata/hemem/src/libhemem-baseline.so)
 # May or may not work, lets run after other workloads are done that are more stable
-for i in $(seq 1 $N); do
+for i in $(seq 4 $N); do
     for size in "${DRAM_SIZES[@]}"; do
         for pol in "${HEMEM_POL[@]}"; do
-           MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE HEMEMPOL=$pol DRAMSIZE=$size ./run.sh -b memcached -w memcached -o results/results_freq_lru_${i}
+            MEM_USED=$(echo "$liblinear_peak * $size / 1" | bc)
+            MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE HEMEMPOL=$pol DRAMSIZE=$MEM_USED ./run.sh -b liblinear -w liblinear -o results/test_${i}
+
+            MEM_USED=$(echo "$cloverleaf_peak * $size / 1" | bc)
+            MIN_INTERPOSE_MEM_SIZE=$MIN_INTERPOSE_MEM_SIZE HEMEMPOL=$pol DRAMSIZE=$MEM_USED ./run.sh -b cloverleaf -w cloverleaf -o results/test_${i}
         done
     done
 done

@@ -49,6 +49,9 @@ liblinear-2.47/kdd12
 liblinear-2.47/predict
 liblinear-2.47/train
 MERCI/data
+logs.txt
+stats.txt
+times.txt
 
 # Jupyter Notebook
 .ipynb_checkpoints

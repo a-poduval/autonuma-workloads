@@ -108,6 +108,7 @@ sys_init() {
     # Drop page cache
     sync
     echo 3 | sudo tee /proc/sys/vm/drop_caches
+    /mydata/hemem/scripts/onboot.sh # If doing hemem experiments
 }
 
 sys_cleanup(){

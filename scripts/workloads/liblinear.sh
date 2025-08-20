@@ -2,7 +2,7 @@
 
 #TODO: Where to get dataset?
 config_liblinear(){
-    num_threads=8
+    num_threads=16
     dataset=$CUR_PATH/liblinear-2.47/kdd12
 }
 
@@ -20,6 +20,11 @@ run_liblinear(){
         2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
         #$CUR_PATH/scripts/vma/record_vma.sh $OUTPUT_DIR \
     workload_pid=$!
+
+    # BW monitoring
+    sudo $CUR_PATH/scripts/cipp-workspace/tools/bwmon 500 \
+        > ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_bwmon.txt &
+    bwmon_pid=$!
 }
 
 run_strace_liblinear(){
@@ -27,5 +32,6 @@ run_strace_liblinear(){
 }
 
 clean_liblinear(){
+    sudo kill "$bwmon_pid"
     return
 }

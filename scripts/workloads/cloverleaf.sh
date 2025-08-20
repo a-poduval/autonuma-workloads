@@ -24,6 +24,11 @@ run_cloverleaf(){
         1> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stdout.txt" \
         2> "${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_stderr.txt" &
     workload_pid=$!
+
+    # BW Monitoring
+    sudo $CUR_PATH/scripts/cipp-workspace/tools/bwmon 500 \
+        > ${OUTPUT_DIR}/${SUITE}_${WORKLOAD}_${hemem_policy}_${DRAMSIZE}_bwmon.txt &
+    bwmon_pid=$!
 }
 
 run_strace_cloverleaf(){
@@ -31,6 +36,7 @@ run_strace_cloverleaf(){
 }
 
 clean_cloverleaf(){
+    sudo kill "$bwmon_pid"
     rm -f clover.in times.txt logs.txt stats.txt clover.in.tmp clover.out
     return
 }
