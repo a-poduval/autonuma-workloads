@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+# PEBS output files
+*.dat
+
+# Binaries
+gups_hemem/gups-skewed
+gups_hemem/gups-hotset-move
+gups_hemem/gups-random
