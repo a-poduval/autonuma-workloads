@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set -euo pipefail # Fail on error, unset variables, or pipes errors
+#set -euo pipefail # Fail on error, unset variables, or pipes errors
 
-# Usage: ./run.sh <application> <local size> <num threads> <log string>
+# Usage: ./run-autonuma.sh <application> <local size> <num threads> <log string>
 if [ -z "$1" ]; then
     echo "Usage: $0 <application> <local tier size in bytes or k/K/m/M/g/G> <num_threads> <log string>"
     echo "Applications: spec_mcf spec_bwaves spec_lbm gapbs_bc gapbs_bfs gapbs_cc gapbs_pr flexkvs liblinear merci silo xsbench"
@@ -39,19 +39,14 @@ mkdir -p "$LOG_DIR"
 
 # Take non-node 0 cores offline
 echo 0 | sudo tee /sys/devices/system/node/node1/cpu*/online >/dev/null 2>&1
-echo 1 | sudo tee /sys/devices/system/node/node1/cpu39/online  # Keep one core online for uncore readings for pcm
-numactl -C 39 bash cpu_burner.sh & # CPU Burner script to keep node 1 core occupied
+#echo 1 | sudo tee /sys/devices/system/node/node1/cpu39/online  # Keep one core online for uncore readings for pcm
+#numactl -C 39 bash cpu_burner.sh & # CPU Burner script to keep node 1 core occupied
 
 # Enable AutoNUMA balancing for tiered memory and configure local tier size
 echo 1 | sudo tee /sys/kernel/mm/numa/demotion_enabled
 echo 2 | sudo tee /proc/sys/kernel/numa_balancing
 #echo 1 | sudo tee /proc/sys/vm/zone_reclaim_mode
 sudo ./node0_size_control.sh set $LSIZE
-
-# Dump pgpromote and demote stats at start
-echo "Start" &> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
-cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
-cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
 
 # Drop the page cache to get consistent application performance measurements
 sudo sync; echo 1 | sudo tee /proc/sys/vm/drop_caches
@@ -61,14 +56,14 @@ sudo sync; echo 1 | sudo tee /proc/sys/vm/drop_caches
 if [[ "$APP" == gapbs_* ]]; then
     SUITE="gapbs"
     WORKLOAD="${APP#gapbs_}"
-    cd $HOME/gapbs
+    #cd $HOME/gapbs
     export OMP_NUM_THREADS=8
-    RUN_CMD="./${WORKLOAD} -f benchmark/graphs/${GRAPH_NAME}.sg -n 16"
+    RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 16"
     if [[ "$WORKLOAD" == bfs ]]; then
-        RUN_CMD="./${WORKLOAD} -f benchmark/graphs/${GRAPH_NAME}.sg -n 512"
+        RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 512"
     fi
     if [[ "$WORKLOAD" == cc ]]; then
-        RUN_CMD="./${WORKLOAD} -f benchmark/graphs/${GRAPH_NAME}.sg -n 512"
+        RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 512"
     fi
 elif [[ "$APP" == spec_* ]]; then
     SUITE="spec"
@@ -86,56 +81,65 @@ elif [[ "$APP" == spec_* ]]; then
 elif [[ "$APP" == flexkvs ]]; then
     SUITE="flexkvs"
     WORKLOAD="flexkvs"
-    cd $HOME/flexkvs
+    #cd $HOME/flexkvs
     RUN_CMD="$HOME/flexkvs/kvsbench -T 100 -w 20 -h 0.25 127.0.0.1:1211 -S 34359738368 -t $NUM_THREADS"
 elif [[ "$APP" == liblinear ]]; then
     SUITE="liblinear"
-    WORKLOAD="liblinear"
+    #WORKLOAD="liblinear"
     cd $HOME/liblinear-2.47
     RUN_CMD="$HOME/liblinear-2.47/train -s 6 -m $NUM_THREADS $HOME/liblinear-2.47/kddb"
 elif [[ "$APP" == merci ]]; then
     SUITE="merci"
     WORKLOAD="ER"
-    cd $HOME/MERCI
+    #cd $HOME/MERCI
     RUN_CMD="$HOME/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r 10 -c $NUM_THREADS"
 elif [[ "$APP" == silo ]]; then
     SUITE="silo"
     WORKLOAD="silo"
-    cd $HOME/silo
+    #cd $HOME/silo
     RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 100 --ops-per-worker 1000000 --num-threads $NUM_THREADS"
 elif [[ "$APP" == xsbench ]]; then
     SUITE="xsbench"
     WORKLOAD="xsbench"
-    cd $HOME/XSBench
-    RUN_CMD="$WORKSPACE/workloads/XSBench/openmp-threading/XSBench -p 30000000 -g 65000 -t $NUM_THREADS"
+    #cd $HOME/XSBench
+    RUN_CMD="$HOME/XSBench/openmp-threading/XSBench -p 30000000 -g 65000 -t $NUM_THREADS"
 else
     echo "Unknown application suite. Must start with 'gapbs_' or 'spec_'."
     exit 1
 fi
 
+# Make a subdirectory for suite
+mkdir -p "$LOG_DIR/$SUITE"
+
+# Dump pgpromote and demote stats at start
+echo "Start" &> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
+cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
+#cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
+
 # Slow uncore frequencies
-sudo wrmsr --processor 39 0x620 0x707
+#sudo wrmsr --processor 39 0x620 0x707
 
 # Start Intel PCM in background and record in csv
 # Throws an error with cores offline, disabling for now
-sudo pcm-memory $INTERVAL -csv="$LOG_DIR/$SUITE/${LOG_NUMBER}_pcm_memory.csv" &
-PCM_MEM_PID=$!
+#sudo pcm-memory $INTERVAL -csv="$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_pcm_memory.csv" &
+#PCM_MEM_PID=$!
 
 # Capture performance counter data
-#$PERF_BIN stat -C 49-60 -I 2000 -e cycles,uops_retired.cycles,exe_activity.bound_on_loads,exe_activity.bound_on_stores,memory_activity.stalls_l1d_miss,memory_activity.stalls_l2_miss,memory_activity.stalls_l3_miss -o $LOG_DIR/$SUITE/${LOG_NUMBER}_perf.csv -x, &
+#$PERF_BIN stat -C 49-60 -I 2000 -e cycles,uops_retired.cycles,exe_activity.bound_on_loads,exe_activity.bound_on_stores,memory_activity.stalls_l1d_miss,memory_activity.stalls_l2_miss,memory_activity.stalls_l3_miss -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
 #PERF_PID=$!
 
 # Launch workload with memory interleaved from the specified NUMA node
 PIDS=()
 for i in $(seq 1 $NUM_COPIES); do
-    #/usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_time.txt ${HOME}/numactl-2.0.19/numactl -m 2,$NUMA_NODE -C 49-60\
+    #/usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt ${HOME}/numactl-2.0.19/numactl -m 2,$NUMA_NODE -C 49-60\
     #     -- $RUN_CMD &
-    /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_time.txt $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_output.log &
+    /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_output.log &
     PIDS+=($!)
 done
 
 # Monitor NUMA memory usage while workloads are running
-echo "timestamp,node0_free_kb,node1_free_kb,node2_free_kb,node3_free_kb,node4_free_kb,node5_free_kb,node6_free_kb,node7_free_kb,node0_used_kb,node1_used_kb,node2_used_kb,node3_used_kb,node4_used_kb,node5_used_kb,node6_used_kb,node7_used_kb" > "$LOG_DIR/$SUITE/${LOG_NUMBER}_numa_meminfo.csv"
+#echo "timestamp,node0_free_kb,node1_free_kb,node2_free_kb,node3_free_kb,node4_free_kb,node5_free_kb,node6_free_kb,node7_free_kb,node0_used_kb,node1_used_kb,node2_used_kb,node3_used_kb,node4_used_kb,node5_used_kb,node6_used_kb,node7_used_kb" > "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
+echo "timestamp,node0_free_kb,node1_free_kb,node0_used_kb,node1_used_kb" > "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
 while true; do
     RUNNING=0
     for pid in "${PIDS[@]}"; do
@@ -152,24 +156,26 @@ while true; do
     TIMESTAMP=$(date +%s)
     NODE0=$(grep MemFree /sys/devices/system/node/node0/meminfo | awk '{print $4}')
     NODE1=$(grep MemFree /sys/devices/system/node/node1/meminfo | awk '{print $4}')
-    NODE2=$(grep MemFree /sys/devices/system/node/node2/meminfo | awk '{print $4}')
-    NODE3=$(grep MemFree /sys/devices/system/node/node3/meminfo | awk '{print $4}')
-    NODE4=$(grep MemFree /sys/devices/system/node/node4/meminfo | awk '{print $4}')
-    NODE5=$(grep MemFree /sys/devices/system/node/node5/meminfo | awk '{print $4}')
-    NODE6=$(grep MemFree /sys/devices/system/node/node6/meminfo | awk '{print $4}')
-    NODE7=$(grep MemFree /sys/devices/system/node/node7/meminfo | awk '{print $4}')
-    #echo -n "$TIMESTAMP,$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_numa_meminfo.csv"
-    echo -n "$TIMESTAMP,$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5,$NODE6,$NODE7" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_numa_meminfo.csv"
+    #NODE2=$(grep MemFree /sys/devices/system/node/node2/meminfo | awk '{print $4}')
+    #NODE3=$(grep MemFree /sys/devices/system/node/node3/meminfo | awk '{print $4}')
+    #NODE4=$(grep MemFree /sys/devices/system/node/node4/meminfo | awk '{print $4}')
+    #NODE5=$(grep MemFree /sys/devices/system/node/node5/meminfo | awk '{print $4}')
+    #NODE6=$(grep MemFree /sys/devices/system/node/node6/meminfo | awk '{print $4}')
+    #NODE7=$(grep MemFree /sys/devices/system/node/node7/meminfo | awk '{print $4}')
+    #echo -n "$TIMESTAMP,$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
+    #echo -n "$TIMESTAMP,$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5,$NODE6,$NODE7" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
+    echo -n "$TIMESTAMP,$NODE0,$NODE1" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
     NODE0=$(grep MemUsed /sys/devices/system/node/node0/meminfo | awk '{print $4}')
     NODE1=$(grep MemUsed /sys/devices/system/node/node1/meminfo | awk '{print $4}')
-    NODE2=$(grep MemUsed /sys/devices/system/node/node2/meminfo | awk '{print $4}')
-    NODE3=$(grep MemUsed /sys/devices/system/node/node3/meminfo | awk '{print $4}')
-    NODE4=$(grep MemUsed /sys/devices/system/node/node4/meminfo | awk '{print $4}')
-    NODE5=$(grep MemUsed /sys/devices/system/node/node5/meminfo | awk '{print $4}')
-    NODE6=$(grep MemUsed /sys/devices/system/node/node6/meminfo | awk '{print $4}')
-    NODE7=$(grep MemUsed /sys/devices/system/node/node7/meminfo | awk '{print $4}')
-    #echo ",$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_numa_meminfo.csv"
-    echo ",$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5,$NODE6,$NODE7" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_numa_meminfo.csv"
+    #NODE2=$(grep MemUsed /sys/devices/system/node/node2/meminfo | awk '{print $4}')
+    #NODE3=$(grep MemUsed /sys/devices/system/node/node3/meminfo | awk '{print $4}')
+    #NODE4=$(grep MemUsed /sys/devices/system/node/node4/meminfo | awk '{print $4}')
+    #NODE5=$(grep MemUsed /sys/devices/system/node/node5/meminfo | awk '{print $4}')
+    #NODE6=$(grep MemUsed /sys/devices/system/node/node6/meminfo | awk '{print $4}')
+    #NODE7=$(grep MemUsed /sys/devices/system/node/node7/meminfo | awk '{print $4}')
+    #echo ",$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
+    #echo ",$NODE0,$NODE1,$NODE2,$NODE3,$NODE4,$NODE5,$NODE6,$NODE7" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
+    echo ",$NODE0,$NODE1" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_numa_meminfo.csv"
     sleep $INTERVAL
 done
 
@@ -181,21 +187,21 @@ done
 # Kill Perf
 #kill $PERF_PID
 # Kill PCM
-kill $PCM_MEM_PID
+#kill $PCM_MEM_PID
 
 # Dump pgpromote and demote stats at start
-echo "End" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
-cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
-cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_procfs.txt"
+echo "End" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
+cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
+#cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
 
 # Reset AutoNUMA balancing and local tier size
 echo 0 | sudo tee /sys/kernel/mm/numa/demotion_enabled
 echo 1 | sudo tee /proc/sys/kernel/numa_balancing
-#echo 0 | sudo tee /proc/sys/vm/zone_reclaim_mode
-sudo ./node0_size_control.sh reset
+echo 0 | sudo tee /proc/sys/vm/zone_reclaim_mode
+sudo $HOME/autonuma-utils/node0_size_control.sh reset
 
 # Reset uncore frequencies
-sudo wrmsr --processor 39 0x620 0xc14
+#sudo wrmsr --processor 39 0x620 0xc14
 
 # Kill CPU burner script
 pkill -f cpu_burner.sh
