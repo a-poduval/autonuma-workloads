@@ -71,3 +71,19 @@ cd ../..
 cd XSBench/openmp-threading
 make -j20
 cd ../..
+
+# Setup the colloid kernel
+sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev fakeroot dwarves
+cd colloid/tpp/linux-6.3
+cp /boot/config-$(uname -r) .config
+scripts/config --disable SYSTEM_REVOCATION_KEYS
+scripts/config --set-str CONFIG_LOCALVERSION "-colloid"
+make -j32 bzImage
+make -j32 modules
+sudo make modules_install
+sudo make install
+echo "Update FAR and LOCAL memory nodes in tierinit and memeater c files"
+echo "Don't forget to add the tier init module and modprobe msr @reboot to the crontab"
+echo -n "For example "
+echo -n "@reboot insmod /mydata/colloid/tpp/tierinit/tierinit.ko"
+echo " or @reboot modprobe msr"
