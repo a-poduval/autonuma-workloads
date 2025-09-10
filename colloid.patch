@@ -1,0 +1,30 @@
+diff --git a/tpp/memeater/memeater.c b/tpp/memeater/memeater.c
+index 22b6e6ca5..4826fcd50 100644
+--- a/tpp/memeater/memeater.c
++++ b/tpp/memeater/memeater.c
+@@ -11,8 +11,8 @@
+ #include <linux/moduleparam.h>
+ #include <linux/memory-tiers.h>
+ 
+-#define FARMEM_NUMA 0
+-#define LOCAL_NUMA 1
++#define FARMEM_NUMA 1
++#define LOCAL_NUMA 0
+ 
+ 
+ static int sizeMiB = 0;
+diff --git a/tpp/tierinit/tierinit.c b/tpp/tierinit/tierinit.c
+index 8411d6bb6..8ea7431e0 100644
+--- a/tpp/tierinit/tierinit.c
++++ b/tpp/tierinit/tierinit.c
+@@ -9,8 +9,8 @@
+ #include <linux/memory-tiers.h>
+ 
+ #define MEMTIER_DEFAULT_FARMEM_ADISTANCE	(MEMTIER_ADISTANCE_DRAM * 10)
+-#define FARMEM_NUMA 0
+-#define LOCAL_NUMA 1
++#define FARMEM_NUMA 1
++#define LOCAL_NUMA 0
+ 
+ static struct memory_dev_type *farmem_type;
+  
