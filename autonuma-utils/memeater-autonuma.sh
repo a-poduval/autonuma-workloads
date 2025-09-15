@@ -86,7 +86,7 @@ elif [[ "$APP" == flexkvs ]]; then
     SUITE="flexkvs"
     WORKLOAD="flexkvs"
     #cd $HOME/flexkvs
-    RUN_CMD="$HOME/flexkvs/kvsbench -T 100 -w 20 -h 0.25 127.0.0.1:1211 -S 34359738368 -t $NUM_THREADS"
+    RUN_CMD="$HOME/flexkvs/kvsbench -T 250 -w 20 -h 0.25 127.0.0.1:1211 -S 34359738368 -t $NUM_THREADS"
 elif [[ "$APP" == gups ]]; then
     SUITE="gups"
     WORKLOAD="gups"
@@ -104,7 +104,7 @@ elif [[ "$APP" == merci ]]; then
     SUITE="merci"
     WORKLOAD="ER"
     #cd $HOME/MERCI
-    RUN_CMD="$HOME/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r 10 -c $NUM_THREADS"
+    RUN_CMD="$HOME/MERCI/4_performance_evaluation/bin/eval_baseline --dataset amazon_All -r 30 -c $NUM_THREADS"
 elif [[ "$APP" == silo ]]; then
     SUITE="silo"
     WORKLOAD="silo"
