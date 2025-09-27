@@ -49,7 +49,7 @@ echo 1 | sudo tee /proc/sys/vm/zone_reclaim_mode
 #sudo ./node0_size_control.sh set $LSIZE
 
 # restrict fast tier size with memeater
-NODE0SZ=$(numactl -H | grep "node 0 size" | awk '{print $4}')
+NODE0SZ=$(numactl -H | grep "node 0 free" | awk '{print $4}')
 sudo insmod $HOME/colloid/tpp/memeater/memeater.ko sizeMiB=$((NODE0SZ-LSIZE))
 
 # Drop the page cache to get consistent application performance measurements

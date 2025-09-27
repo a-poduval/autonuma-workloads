@@ -1,3 +1,39 @@
+diff --git a/tpp/kswapdrst/kswapdrst.c b/tpp/kswapdrst/kswapdrst.c
+index ae3821b4e..46bb3f939 100644
+--- a/tpp/kswapdrst/kswapdrst.c
++++ b/tpp/kswapdrst/kswapdrst.c
+@@ -10,8 +10,8 @@
+ #include <linux/memory-tiers.h>
+ #include <linux/delay.h>
+ 
+-#define FARMEM_NUMA 0
+-#define LOCAL_NUMA 1
++#define FARMEM_NUMA 1
++#define LOCAL_NUMA 0
+ #define CORE 0
+ #define INTERVAL_MS 5000
+ 
+diff --git a/tpp/linux-6.3/mm/filemap.c b/tpp/linux-6.3/mm/filemap.c
+index 2723104cc..d11dcfe4a 100644
+--- a/tpp/linux-6.3/mm/filemap.c
++++ b/tpp/linux-6.3/mm/filemap.c
+@@ -963,6 +963,16 @@ struct folio *filemap_alloc_folio(gfp_t gfp, unsigned int order)
+ 	int n;
+ 	struct folio *folio;
+ 
++	// Try to alloc from node 1
++	int pnid = 1;
++	folio = __folio_alloc_node(gfp | __GFP_THISNODE, order, pnid);
++	if (folio)
++		return folio;
++
++	folio = __folio_alloc_node(gfp, order, pnid);
++	if (folio)
++		return folio;
++
+ 	if (cpuset_do_page_mem_spread()) {
+ 		unsigned int cpuset_mems_cookie;
+ 		do {
 diff --git a/tpp/memeater/memeater.c b/tpp/memeater/memeater.c
 index 22b6e6ca5..4826fcd50 100644
 --- a/tpp/memeater/memeater.c
