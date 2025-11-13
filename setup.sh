@@ -4,7 +4,7 @@ git submodule init
 git submodule update
 
 sudo apt update
-sudo apt install -y libnuma-dev libpmem-dev libaio-dev libssl-dev mpich libdb++-dev pcm msr-tools
+sudo apt install -y libnuma-dev libpmem-dev libaio-dev libssl-dev mpich libdb++-dev pcm msr-tools htop
 
 # PEBS
 cd scripts/PEBS_page_tracking/
@@ -73,13 +73,14 @@ make -j20
 cd ../..
 
 # Setup the colloid kernel
-sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev fakeroot dwarves
+sudo apt install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev fakeroot dwarves linux-tools-$(uname -r)
 cd colloid
 git apply ../colloid.patch
 cd tpp/linux-6.3
 cp /boot/config-$(uname -r) .config
 make olddefconfig
 scripts/config --disable SYSTEM_REVOCATION_KEYS
+scripts/config --disable SYSTEM_TRUSTED_KEYS
 scripts/config --set-str CONFIG_LOCALVERSION "-colloid"
 make -j32 bzImage
 make -j32 modules
