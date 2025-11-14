@@ -140,12 +140,24 @@ PCM_MEM_PID=$!
 #$PERF_BIN stat -C 0-9,10-19 -I 2000 -e cycles,uops_retired.cycles,exe_activity.bound_on_loads,exe_activity.bound_on_stores,memory_activity.stalls_l1d_miss,memory_activity.stalls_l2_miss,memory_activity.stalls_l3_miss -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
 #PERF_PID=$!
 
+# Pin tasks to cores for determinism in performance
+if [[ ${NUM_THREADS} -lt 10 ]]; then
+    PINNING="taskset -c 1-${NUM_THREADS}"
+elif [[ ${NUM_THREADS} -eq 10 ]]; then
+    PINNING="taskset -c 1-9,20"
+else
+    PINNING="taskset -c 1-9,20-$((NUM_THREADS + 10))"
+fi
+
+# 020002a3 = CYCLE_ACTIVITY.CYCLES_L3_MISS
+# 060006a3 = CYCLE_ACTIVITY.STALLS_L3_MISS
+
 # Launch workload with memory interleaved from the specified NUMA node
 PIDS=()
 for i in $(seq 1 $NUM_COPIES); do
     #/usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt ${HOME}/numactl-2.0.19/numactl -m 2,$NUMA_NODE -C 49-60\
     #     -- $RUN_CMD &
-    /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_output.log &
+    ${PINNING} /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt perf stat -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.txt -I 1000 -e cycles -e r020002a3 -e r060006a3 $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_output.log &
     PIDS+=($!)
 done
 
