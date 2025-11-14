@@ -86,12 +86,6 @@ make -j32 bzImage
 make -j32 modules
 sudo make modules_install
 sudo make install
-cd ../memeater
-make
-cd ../tierinit
-make
-cd ../kswapdrst
-make
 #echo "Update FAR and LOCAL memory nodes in tierinit and memeater c files"
 #echo "Don't forget to add the tierinit and kswapdrst modules and modprobe msr @reboot to the crontab"
 #echo -n "For example "
