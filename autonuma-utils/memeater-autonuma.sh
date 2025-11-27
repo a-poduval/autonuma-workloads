@@ -48,6 +48,10 @@ echo 2 | sudo tee /proc/sys/kernel/numa_balancing
 echo 1 | sudo tee /proc/sys/vm/zone_reclaim_mode
 #sudo ./node0_size_control.sh set $LSIZE
 
+# Enable THP for parity with Memtis
+echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
 # restrict fast tier size with memeater
 NODE0SZ=$(numactl -H | grep "node 0 free" | awk '{print $4}')
 sudo insmod $HOME/colloid/tpp/memeater/memeater.ko sizeMiB=$((NODE0SZ-LSIZE))
@@ -62,12 +66,13 @@ if [[ "$APP" == gapbs_* ]]; then
     WORKLOAD="${APP#gapbs_}"
     #cd $HOME/gapbs
     export OMP_NUM_THREADS=$NUM_THREADS
-    RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 16"
+    #RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 16"
+    RUN_CMD="$HOME/gapbs/${WORKLOAD} -g 28 -n 16"
     if [[ "$WORKLOAD" == bfs ]]; then
-        RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 512"
+        RUN_CMD="$HOME/gapbs/${WORKLOAD} -g 28 -n 128"
     fi
     if [[ "$WORKLOAD" == cc ]]; then
-        RUN_CMD="$HOME/gapbs/${WORKLOAD} -f $HOME/gapbs/benchmark/graphs/${GRAPH_NAME}.sg -n 512"
+        RUN_CMD="$HOME/gapbs/${WORKLOAD} -g 28 -n 128"
     fi
 elif [[ "$APP" == spec_* ]]; then
     SUITE="spec"
@@ -86,20 +91,16 @@ elif [[ "$APP" == flexkvs ]]; then
     SUITE="flexkvs"
     WORKLOAD="flexkvs"
     #cd $HOME/flexkvs
-    RUN_CMD="$HOME/flexkvs/kvsbench -T 250 -w 20 -h 0.25 127.0.0.1:1211 -S 34359738368 -t $NUM_THREADS"
+    RUN_CMD="$HOME/flexkvs/kvsbench -T 400 -w 20 -h 0.25 127.0.0.1:1211 -S $((2 * 34359738368)) -t $NUM_THREADS"
 elif [[ "$APP" == gups ]]; then
     SUITE="gups"
     WORKLOAD="gups"
-    # Reset size of fast tier, we are not using 4k pages for this workload
-    #sudo $HOME/autonuma-utils/node0_size_control.sh reset
-    #echo $LSIZE | sudo tee /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
-    #echo 20000 | sudo tee /sys/devices/system/node/node1/hugepages/hugepages-2048kB/nr_hugepages
     RUN_CMD="$HOME/gups_hemem/gups-hotset-move $NUM_THREADS 1000000000 35 8 33 n"
 elif [[ "$APP" == liblinear ]]; then
     SUITE="liblinear"
     #WORKLOAD="liblinear"
     cd $HOME/liblinear-2.47
-    RUN_CMD="$HOME/liblinear-2.47/train -s 6 -m $NUM_THREADS $HOME/liblinear-2.47/kddb"
+    RUN_CMD="$HOME/liblinear-2.47/train -s 6 -m $NUM_THREADS $HOME/liblinear-2.47/kdd12"
 elif [[ "$APP" == merci ]]; then
     SUITE="merci"
     WORKLOAD="ER"
@@ -109,12 +110,12 @@ elif [[ "$APP" == silo ]]; then
     SUITE="silo"
     WORKLOAD="silo"
     #cd $HOME/silo
-    RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 100 --ops-per-worker 1000000 --num-threads $NUM_THREADS"
+    RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 400 --ops-per-worker 4000000 --num-threads $NUM_THREADS"
 elif [[ "$APP" == xsbench ]]; then
     SUITE="xsbench"
     WORKLOAD="xsbench"
     #cd $HOME/XSBench
-    RUN_CMD="$HOME/XSBench/openmp-threading/XSBench -p 30000000 -g 65000 -t $NUM_THREADS"
+    RUN_CMD="$HOME/XSBench/openmp-threading/XSBench -p 30000000 -g 130000 -t $NUM_THREADS"
 else
     echo "Unknown application suite. Must start with 'gapbs_' or 'spec_'."
     exit 1
@@ -151,13 +152,15 @@ fi
 
 # 020002a3 = CYCLE_ACTIVITY.CYCLES_L3_MISS
 # 060006a3 = CYCLE_ACTIVITY.STALLS_L3_MISS
+# 01b0     = OFFCORE_REQUESTS.DEMAND_DATA_RD
+# 01000160 = OFFCORE_REQUESTS_OUTSTANDING.CYCLES_WITH_DEMAND_DATA_RD
 
 # Launch workload with memory interleaved from the specified NUMA node
 PIDS=()
 for i in $(seq 1 $NUM_COPIES); do
     #/usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt ${HOME}/numactl-2.0.19/numactl -m 2,$NUMA_NODE -C 49-60\
     #     -- $RUN_CMD &
-    ${PINNING} /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt perf stat -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.txt -I 1000 -e cycles -e r020002a3 -e r060006a3 $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_output.log &
+    ${PINNING} /usr/bin/time -v -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_time.txt perf stat -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.txt -I 1000 -e cycles -e r020002a3 -e r060006a3 -e r01b0 -e r01000160 $RUN_CMD &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_output.log &
     PIDS+=($!)
 done
 
@@ -219,6 +222,10 @@ echo "End" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
 cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
 #cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
 
+# Reset THP
+#echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+#echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
 # Reset AutoNUMA balancing and local tier size
 echo 0 | sudo tee /sys/kernel/mm/numa/demotion_enabled
 echo 1 | sudo tee /proc/sys/kernel/numa_balancing
@@ -236,9 +243,5 @@ pkill -f cpu_burner.sh
 
 # Bring all cores online
 echo 1 | sudo tee /sys/devices/system/cpu/cpu*/online >/dev/null 2>&1
-
-# Reset huge pages
-echo 0 | sudo tee /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
-echo 0 | sudo tee /sys/devices/system/node/node1/hugepages/hugepages-2048kB/nr_hugepages
 
 echo "Monitoring complete. Logs saved in $LOG_DIR"
