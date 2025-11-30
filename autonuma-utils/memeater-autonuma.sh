@@ -110,7 +110,8 @@ elif [[ "$APP" == silo ]]; then
     SUITE="silo"
     WORKLOAD="silo"
     #cd $HOME/silo
-    RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 400 --ops-per-worker 4000000 --num-threads $NUM_THREADS"
+    #RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 400 --ops-per-worker 4000000 --num-threads $NUM_THREADS"
+    RUN_CMD="$HOME/silo/silo/out-perf.masstree/benchmarks/dbtest --verbose --bench tpcc --scale-factor 600 --ops-per-worker 4000000 --num-threads $NUM_THREADS"
 elif [[ "$APP" == xsbench ]]; then
     SUITE="xsbench"
     WORKLOAD="xsbench"
