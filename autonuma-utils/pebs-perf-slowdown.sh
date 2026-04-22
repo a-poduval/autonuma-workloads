@@ -140,13 +140,20 @@ PCM_MEM_PID=$!
 
 # Capture performance counter data
 # Events - L3 miss stalls, outstanding demand reads, memory active cycles, store buffer full stalls, LFB hits
-sudo perf stat -C 1-8 -I 2000 -e cycles -e cpu/event=0xa3,umask=0x06,cmask=0x6/ -e cpu/event=0x60,umask=0x01/ -e cpu/event=0x60,umask=0x01,cmask=0x01/ -e cpu/event=0xa6,umask=0x40/ -e cpu/event=0xd1,umask=0x40/ -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
+# Perfmon event names - CYCLE_ACTIVITY.STALLS_L3_MISS, OFFCORE_REQUESTS_OUTSTANDING.DEMAND_DATA_RD, OFFCORE_REQUESTS_OUTSTANDING.CYCLES_WITH_DEMAND_DATA_RD, EXE_ACTIVITY.BOUND_ON_STORES, MEM_LOAD_RETIRED.FB_HIT
+# Perhaps we should add OFFCORE_REQUESTS.DEMAND_DATA_RD EventSel=B0H UMask=01H (divide outstanding by this to get average mem latency in cycles), MEM_LOAD_L3_MISS_RETIRED.LOCAL_DRAM, EventSel=B0H UMask=01HMEM_LOAD_L3_MISS_RETIRED.REMOTE_DRAM and drop pebs, capture perf at high granularity like every 10ms or something crazy
+#sudo perf stat -C 1-8 -I 2000 -e cycles -e cpu/event=0xa3,umask=0x06,cmask=0x6/ -e cpu/event=0x60,umask=0x01/ -e cpu/event=0x60,umask=0x01,cmask=0x01/ -e cpu/event=0xa6,umask=0x40/ -e cpu/event=0xd1,umask=0x40/ -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
+# DTLB_LOAD_MISSES.WALK_PENDING EventSel=08H UMask=10H / DTLB_LOAD_MISSES.MISS_CAUSES_A_WALK EventSel=08H UMask=01H gives us average number of cycles per walk, and number MISS_CAUSES_A_WALK is number of walks, so we know how many addr translations, and on average number of cycles to tell how many unique translations occurred
+# Disable NMI watchdog so that cycles are counted
+sudo sysctl -w kernel.nmi_watchdog=0
+#sudo perf stat -C 1-8 -I 100 -e cycles -e cpu/event=0xa3,umask=0x06,cmask=0x6/ -e cpu/event=0xb0,umask=0x01/ -e cpu/event=0x60,umask=0x01/ -e cpu/event=0x60,umask=0x01,cmask=0x01/ -e cpu/event=0xd3,umask=0x01/ -e cpu/event=0xd3,umask=0x02/ -e cpu/event=0x08,umask=0x10/ -e cpu/event=0x08,umask=0x01/ -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
+sudo perf stat -C 1-8 -I 100 -e cycles -e "{cpu/event=0xb0,umask=0x01/, cpu/event=0x60,umask=0x01/}" -e "{cpu/event=0xd3,umask=0x01/, cpu/event=0xd3,umask=0x02/}" -e "{cpu/event=0x08,umask=0x10/, cpu/event=0x08,umask=0x01/}" -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
 PERF_PID=$!
 
 # d3 01 is l3 misses serviced from local dram, d3 02 is remote dram 
-sudo perf record -C 1-8 -e cpu/event=0xd3,umask=0x01,name=local_dram_miss/pp -e cpu/event=0xd3,umask=0x02,name=remote_dram_miss/pp -d -c 100 -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_pebs.data &
+#sudo perf record -C 1-8 -e cpu/event=0xd3,umask=0x01,name=local_dram_miss/pp -e cpu/event=0xd3,umask=0x02,name=remote_dram_miss/pp -d -c 101 -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_pebs.data &
 #sudo perf record -C 1-8 -e cpu/event=0xd3,umask=0x01,name=local_dram_miss/pp -e cpu/event=0xd3,umask=0x02,name=remote_dram_miss/pp -d -c 10000 -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_pebs.data &
-PEBS_PID=$!
+#PEBS_PID=$!
 #process with sudo perf script -F event,ip,sym,dso,addr
 
 $HOME/autonuma-utils/vmstat_metrics_logger.sh &> $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_vmstat.csv &
@@ -226,7 +233,7 @@ done
 # Kill vmstat logger
 kill $VMSTAT_PID
 # Kill PEBS
-sudo kill $PEBS_PID
+#sudo kill $PEBS_PID
 # Kill Perf
 sudo kill $PERF_PID
 #sudo pkill -f perf
@@ -242,6 +249,9 @@ cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${L
 # Reset THP
 #echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 #echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
+# Reset NMI watchdog
+sudo sysctl -w kernel.nmi_watchdog=1
 
 # Reset AutoNUMA balancing and local tier size
 echo 0 | sudo tee /sys/kernel/mm/numa/demotion_enabled
