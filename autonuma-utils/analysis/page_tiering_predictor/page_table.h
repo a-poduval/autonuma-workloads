@@ -21,6 +21,8 @@ typedef struct {
     double mean_time_delta;
     double last_timestamp;
     bool has_last_timestamp;
+    bool has_predicted_state;
+    bool predicted_remote_state;
 } page_state_t;
 
 typedef struct {
