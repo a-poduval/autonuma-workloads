@@ -1,35 +1,57 @@
-for i in {1..28}
+#!/bin/bash
+
+#for i in {1..12}
+#do
+# ./memeater-autonuma.sh flexkvs $((1024 * 6 * i)) 16 flexkvs-$((i * 6))GB
+# ./memeater-autonuma.sh flexkvs $((1024 * 6 * i)) 8 flexkvs-$((i * 6))GB
+# ./memeater-autonuma.sh flexkvs $((1024 * 6 * i)) 4 flexkvs-$((i * 6))GB
+#done
+#
+#for i in {1..12}
+#do
+#  ./memeater-autonuma.sh gapbs_bc $((1024 * 4 * i)) 16 gapbs_bc-$((i * 4))GB
+#  ./memeater-autonuma.sh gapbs_bc $((1024 * 4 * i)) 8 gapbs_bc-$((i * 4))GB
+#  ./memeater-autonuma.sh gapbs_bc $((1024 * 4 * i)) 4 gapbs_bc-$((i * 4))GB
+#done
+#
+for i in {1..12}
 do
-  ./memeater-autonuma.sh liblinear $((1024 * i)) 16 liblinear-${i}GB
-  ./memeater-autonuma.sh liblinear $((1024 * i)) 8 liblinear-${i}GB
+  ./memeater-autonuma.sh gapbs_cc $((1024 * 4 * i)) 16 gapbs_cc-$((i * 4))GB
+  ./memeater-autonuma.sh gapbs_cc $((1024 * 4 * i)) 8 gapbs_cc-$((i * 4))GB
+  ./memeater-autonuma.sh gapbs_cc $((1024 * 4 * i)) 4 gapbs_cc-$((i * 4))GB
 done
 
-for i in {1..20}
+for i in {1..12}
 do
-  ./memeater-autonuma.sh silo $((1024 * i)) 16 silo-${i}GB
-  ./memeater-autonuma.sh silo $((1024 * i)) 8 silo-${i}GB
+  ./memeater-autonuma.sh gapbs_pr $((1024 * 4 * i)) 16 gapbs_pr-$((i * 4))GB
+  ./memeater-autonuma.sh gapbs_pr $((1024 * 4 * i)) 8 gapbs_pr-$((i * 4))GB
+  ./memeater-autonuma.sh gapbs_pr $((1024 * 4 * i)) 4 gapbs_pr-$((i * 4))GB
 done
 
-for i in {1..40}
+for i in {1..12}
 do
- ./memeater-autonuma.sh flexkvs $((1024 * i)) 16 flexkvs-${i}GB
- ./memeater-autonuma.sh flexkvs $((1024 * i)) 8 flexkvs-${i}GB
+  ./memeater-autonuma.sh liblinear $((1024 * 5 * i)) 16 liblinear-$((i * 5))GB
+  ./memeater-autonuma.sh liblinear $((1024 * 5 * i)) 8 liblinear-$((i * 5))GB
+  ./memeater-autonuma.sh liblinear $((1024 * 5 * i)) 4 liblinear-$((i * 5))GB
 done
 
-for i in {1..32}
+for i in {1..12}
 do
-  ./memeater-autonuma.sh gapbs_bc $((1024 * i)) 16 gapbs_bc-${i}GB
-  ./memeater-autonuma.sh gapbs_bc $((1024 * i)) 8 gapbs_bc-${i}GB
+  ./memeater-autonuma.sh merci $((1024 * 2 * i)) 16 merci-$((i * 2))GB
+  ./memeater-autonuma.sh merci $((1024 * 2 * i)) 8 merci-$((i * 2))GB
+  ./memeater-autonuma.sh merci $((1024 * 2 * i)) 4 merci-$((i * 2))GB
 done
 
-for i in {1..32}
+for i in {1..12}
 do
-  ./memeater-autonuma.sh gapbs_pr $((1024 * i)) 16 gapbs_pr-${i}GB
-  ./memeater-autonuma.sh gapbs_pr $((1024 * i)) 8 gapbs_pr-${i}GB
+  ./memeater-autonuma.sh silo $((1024 * 6 * i)) 16 silo-$((i * 6))GB
+  ./memeater-autonuma.sh silo $((1024 * 6 * i)) 8 silo-$((i * 6))GB
+  ./memeater-autonuma.sh silo $((1024 * 6 * i)) 4 silo-$((i * 6))GB
 done
 
-for i in {1..28}
+for i in {1..12}
 do
-  ./memeater-autonuma.sh merci $((1024 * i)) 16 merci-${i}GB
-  ./memeater-autonuma.sh merci $((1024 * i)) 8 merci-${i}GB
+  ./memeater-autonuma.sh xsbench $((1024 * 6 * i)) 16 xsbench-$((i * 6))GB
+  ./memeater-autonuma.sh xsbench $((1024 * 6 * i)) 8 xsbench-$((i * 6))GB
+  ./memeater-autonuma.sh xsbench $((1024 * 6 * i)) 4 xsbench-$((i * 6))GB
 done
