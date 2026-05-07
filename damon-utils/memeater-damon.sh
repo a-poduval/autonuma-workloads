@@ -64,7 +64,7 @@ GRAPH_NAME="twitter"
 
 # Set top-level directory in repository as home
 HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOG_DIR="${HOME}/damon_logs"
+LOG_DIR="${HOME}/logs_damon"
 
 # Path to perf bin
 #PERF_BIN="$HOME/colloid/tpp/linux-6.3/tools/perf/perf"
@@ -80,8 +80,8 @@ mkdir -p "$LOG_DIR"
 ./damon_ctrl.sh start $QUOTA_SPACE $PROMO_LB
 
 # Enable THP for parity with Memtis
-echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
-echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+#echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+#echo "always" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 # restrict fast tier size with memeater
 NODE0SZ=$(numactl -H | grep "node 0 free" | awk '{print $4}')
@@ -158,11 +158,6 @@ fi
 # Make a subdirectory for suite
 mkdir -p "$LOG_DIR/$SUITE"
 
-# Dump pgpromote and demote stats at start
-echo "Start" &> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-#cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-
 # Start AMD PCM in background and record in csv
 # Unlike Intel, doesn't throw an error with cores offline, just doesn't emit any data for them
 sudo env "PATH=$PATH" AMDuProfPcm -m memory -a -A system,package -I $((INTERVAL * 1000)) --collect-pcie -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_uprof_pcm_memory.csv &
@@ -173,10 +168,11 @@ PCM_MEM_PID=$!
 # Local DRAM: cpu/event=0x43,umask=0x08/, Remote DRAM: cpu/event=0x43,umask=0x40/, CXL/Extension Memory: cpu/event=0x43,umask=0x80/
 # L1 DTLB Reloads: PMCx045 with UnitMask 0xF0
 #$PERF_BIN stat -C 0-9,10-19 -I 2000 -e cycles,uops_retired.cycles,exe_activity.bound_on_loads,exe_activity.bound_on_stores,memory_activity.stalls_l1d_miss,memory_activity.stalls_l2_miss,memory_activity.stalls_l3_miss -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
-sudo perf stat -C 1-8 -I $((INTERVAL * 1000)) -e cycles -e "{amd_l3/event=0xac,umask=0xff/,amd_l3/event=0xad,umask=0xff/}" -e "{cpu/event=0x43,umask=0x08/,cpu/event=0x43,umask=0x40/,cpu/event=0x43,umask=0x80/}" -e "{cpu/event=0x45,umask=0xf0/}" -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
+#sudo perf stat -C 1-8 -I $((INTERVAL * 1000)) -e cycles -e "{amd_l3/event=0xac,umask=0xff,enallcores=1,enallslices=1,sliceid=3,threadmask=3/,amd_l3/event=0xad,umask=0xff,enallcores=1,enallslices=1,sliceid=3,threadmask=3/}" -e "{cpu/event=0x43,umask=0x08/,cpu/event=0x43,umask=0x40/,cpu/event=0x43,umask=0x80/}" -e "{cpu/event=0x45,umask=0xf0/}" -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
+sudo perf stat -C 1-8 -I $((INTERVAL * 1000)) -e cycles -e "{amd_l3/event=0xac,umask=0x20,enallcores=1,enallslices=1,sliceid=3,threadmask=3/,amd_l3/event=0xad,umask=0x20,enallcores=1,enallslices=1,sliceid=3,threadmask=3/,amd_l3/event=0xac,umask=0x01,enallcores=1,enallslices=1,sliceid=3,threadmask=3/,amd_l3/event=0xad,umask=0x01,enallcores=1,enallslices=1,sliceid=3,threadmask=3/}" -e "{cpu/event=0x43,umask=0x08/,cpu/event=0x43,umask=0x40/,cpu/event=0x43,umask=0x80/}" -e "{cpu/event=0x45,umask=0xf0/}" -o $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_perf.csv -x, &
 PERF_PID=$!
 
-./damon_metrics_logger.sh $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_damon.csv $INTERVAL &
+$HOME/damon-utils/damon_metrics_logger.sh $LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_damon.csv $INTERVAL &
 DAMON_STAT_PID=$!
 
 # Pin tasks to cores for determinism in performance
@@ -230,7 +226,7 @@ for pid in "${PIDS[@]}"; do
 done
 
 # Kill vmstat logger
-kill $DAMON_STAT_PID
+sudo kill $DAMON_STAT_PID
 # Kill Perf
 sudo kill $PERF_PID
 #pkill -f perf
@@ -238,14 +234,29 @@ sudo kill $PERF_PID
 sudo kill $PCM_MEM_PID
 #pkill -f AMDuProfPcm
 
-# Dump pgpromote and demote stats at start
-echo "End" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-cat /proc/vmstat | grep "pgpromote\|pgdemote\|pgmigrate" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-#cat /proc/zoneinfo | grep "Node\|nr_\|workingset\|pgpromote\|pgdemote\|numa" >> "$LOG_DIR/$SUITE/${LOG_NUMBER}_${NUM_THREADS}t_procfs.txt"
-
 # Reset THP
-echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
-echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+#echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+#echo "madvise" | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
+
+# Ensure damon sysfs lock is no longer held
+for s in /sys/kernel/mm/damon/admin/kdamonds/[0-9]*/state; do
+    ok=0
+
+    for i in $(seq 1 10); do
+        if echo off | sudo tee "$s" >/dev/null; then
+            ok=1
+            break
+        fi
+
+        echo "WARN: failed to write off to $s, retry $i/10" >&2
+        sleep 1
+    done
+
+    if ((ok == 0)); then
+        echo "ERROR: failed to stop $s after 10 retries" >&2
+        exit 1
+    fi
+done
 
 # Disable DAMON tiering
 ./damon_ctrl.sh stop
